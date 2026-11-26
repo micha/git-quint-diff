@@ -39,4 +39,4 @@ for bin in "$scratch/profile/bin" "$PIPX_BIN_DIR"; do
 done
 ```
 
-CI is configured to run this gate on both target hosts. It saves the SHA-256 manifest, not the binaries or a GitHub Release. Before publishing an RC, require both native jobs to pass on the commit to be tagged, clear the [bundled dependency redistribution checks](../packaging/REDISTRIBUTION.md), and confirm the project's own licensing with its owner. Keep the prototype archive and test fixtures out of the shipped runtime.
+CI runs this gate on both target hosts, including for pushes to `rc-validation/**`. It saves the SHA-256 manifest, not the binaries or a GitHub Release. The project's [MIT license](../LICENSE) is included in both packages. Before publishing an RC, require both native jobs to pass on the exact commit to be tagged and clear the [bundled dependency redistribution checks](../packaging/REDISTRIBUTION.md). Keep the prototype archive and test fixtures out of the shipped runtime.

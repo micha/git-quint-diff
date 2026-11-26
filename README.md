@@ -40,3 +40,7 @@ nix develop --command python3 -B -m unittest discover -s release-tests -v
 ```
 
 The harness runs the executable on disposable Git repositories, including offline reconstructions of the exact upstream consensus commits. It checks consensus outcomes and witnesses against an independently compiled native scheduler. See [the design record](docs/design-spiral.md) for the checks and prototype archive.
+
+## License
+
+The project's own code and documentation are under the [MIT License](LICENSE). Vendored fixtures and runtime dependencies retain their own terms; see the [consensus fixture license](release-tests/fixtures/consensus/LICENSE) and [wheel redistribution notes](packaging/REDISTRIBUTION.md).

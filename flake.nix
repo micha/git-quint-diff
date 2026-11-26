@@ -57,13 +57,14 @@
             version = "0.1.0-rc1";
             src = pkgs.lib.fileset.toSource {
               root = ./.;
-              fileset = pkgs.lib.fileset.unions [ ./git-quint-diff ./runtime ];
+              fileset = pkgs.lib.fileset.unions [ ./LICENSE ./git-quint-diff ./runtime ];
             };
             nativeBuildInputs = [ pkgs.makeWrapper ];
             dontBuild = true;
             installPhase = ''
               runHook preInstall
               install -Dm644 git-quint-diff "$out/libexec/git-quint-diff/git-quint-diff"
+              install -Dm644 LICENSE "$out/share/licenses/git-quint-diff/LICENSE"
               cp -r runtime "$out/libexec/git-quint-diff/"
               makeWrapper ${pkgs.nodejs}/bin/node "$out/bin/git-quint-diff" \
                 --add-flags "$out/libexec/git-quint-diff/git-quint-diff" \
@@ -76,6 +77,7 @@
             '';
             meta = {
               description = "Compare the behavior of Quint models in two Git revisions";
+              license = pkgs.lib.licenses.mit;
               mainProgram = "git-quint-diff";
             };
           };

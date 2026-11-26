@@ -125,6 +125,7 @@ def stage(scratch, cache, target, pins):
     info = base / f"{PACKAGE}-{VERSION}.dist-info"
     licenses = info / "licenses"
     licenses.mkdir(parents=True)
+    shutil.copyfile(ROOT / "LICENSE", licenses / "git-quint-diff-LICENSE")
     payload = base / PACKAGE / "payload"
     payload.mkdir(parents=True)
     shutil.copyfile(HERE / "launcher.py", payload.parent / "__init__.py")

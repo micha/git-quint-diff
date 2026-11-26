@@ -19,9 +19,10 @@ available under the applicable terms (OpenJDK: GPL v2 with Classpath Exception).
 `build-wheel.py` records the `jlink` command used to assemble the image.
 
 These are internal release-candidate build instructions, not publication
-authorization. No first-party license is inferred from third-party notices.
-Before public redistribution, confirm first-party permission and audit all
-transitive redistribution obligations, including native solver libraries inside
+authorization. The wheel includes the project's [MIT license](../LICENSE)
+for its own code and documentation; that license does not apply to bundled
+components. Before public redistribution, audit all transitive
+redistribution obligations, including native solver libraries inside
 the upstream Apalache JAR (see cvc5's COPYING and its notes on optional and
 bundled third-party libraries). The OpenJDK companions alone do not settle that
 audit. Do not upload to PyPI or attach to a public release as part of this gate.

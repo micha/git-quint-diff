@@ -3,7 +3,7 @@ name: Release candidate packages
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'rc-validation/**']
   workflow_dispatch:
 
 permissions:
