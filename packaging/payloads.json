@@ -1,0 +1,38 @@
+{
+  "node": {
+    "version": "24.22.3",
+    "linux-arm64": "6e51a2ada00f0011cc266f65d98922b403d7ad88f809ca2aa615a5fe1ce6e86c",
+    "linux-x64": "4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb",
+    "darwin-arm64": "1d64136c8a43d648d1b3bad10797a4c995b1ca032d2bde8799de43b37f058fe5"
+  },
+  "temurin": {
+    "version": "21.0.13.1+2",
+    "aarch64_linux": "8c72816a6b308842d5ed1f13e5826b69c567da4784f7238d7e800efa71fe54b1",
+    "x64_linux": "bb8a93f9ae6e7a693b2b721e85dbeff26ae1a77447985a8d7afcdd9c7cf6222e",
+    "aarch64_mac": "48067f2b7c958ed104a9d8a5749be7d25220b0a356b4d2d1bcfaab3e16ad0b14",
+    "sources": "427e3eaec042f61c93258b5a42c86f3ddbad45a2ba95132dd4a3e3c07414bc8c",
+    "build-commit": "8d9fd6fa96e5066571a13823b07c2934e5958d8b",
+    "build-source": "0c9489a96b3c58c463327af7b33c147f2855da79a032ccad7aca2b9f377e5eea"
+  },
+  "quint": {
+    "version": "0.33.1",
+    "npm": "a219b8566a2e559840a46ee85fc70e7e202c7c02e01e3eb9d393fa32ef692bd6",
+    "source": "8ac984b9cac3fd576351d3edaa3b7ed760098cef79d867002f8218b08c37d345"
+  },
+  "apalache": {
+    "version": "0.62.4",
+    "sha256": "8ac8488422c30d552735bae11b92a2d014d8e02e8608702acc08f9a2d8a9abb2"
+  },
+  "notice_files": {
+    "Apalache-NOTICE": ["https://raw.githubusercontent.com/apalache-mc/apalache/v0.62.4/NOTICE", "787ac7de707fb7d6761946b8005153a03600f3187ee541dd12516872a7b96b79"],
+    "cvc5-COPYING": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/COPYING", "341cd23c1133beda63509cad8d82b96a47dc8e321bdd49ce8190e371110ccff7"],
+    "cvc5-AUTHORS": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/AUTHORS", "561bdaab091a514306dc2537aaa0b9192bfb7a2eb2e0f7feee5442236dfadcfa"],
+    "cvc5-lgpl-3.0.txt": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/licenses/lgpl-3.0.txt", "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"],
+    "cvc5-gpl-3.0.txt": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/licenses/gpl-3.0.txt", "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"],
+    "cvc5-GCC-exception-3.1.txt": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/licenses/GCC-exception-3.1.txt", "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"],
+    "Z3-LICENSE.txt": ["https://raw.githubusercontent.com/Z3Prover/z3/z3-4.14.1/LICENSE.txt", "e617cad2ab9347e3129c2b171e87909332174e17961c5c3412d0799469111337"],
+    "sweet-monads-LICENSE": ["https://raw.githubusercontent.com/JSMonk/sweet-monads/bde4474989df79601e4e5966d65f33fe29d0f6ce/LICENSE", "bb769f3e97342f15aa25b67fad736d1233b0c3c00086f139bccbc8a8fc68620a"],
+    "undici-types-LICENSE": ["https://raw.githubusercontent.com/nodejs/undici/v5.26.5/LICENSE", "a6db8096b2707bc0102d256917d4d33f298ba36d8c3f25de067a2b5bb379db27"],
+    "DefinitelyTyped-LICENSE": ["https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ca8d73dbc9d57342b5dfec6fa745e1509c7d03fe/LICENSE", "0a48f63d7d32a49d196dce4b2e0cbc236c2cc8fef42cb20e005e4d5f813cc8f6"]
+  }
+}

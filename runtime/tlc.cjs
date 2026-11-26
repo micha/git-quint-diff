@@ -14,12 +14,12 @@ const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 function findJar() {
   const home = process.env.QUINT_HOME;
   const jar = home && path.resolve(home, `apalache-dist-${VERSION}`, 'apalache/lib/apalache.jar');
-  if (!jar || !fs.existsSync(jar)) fail('backend', `missing Apalache ${VERSION} / TLC jar; use nix develop`);
+  if (!jar || !fs.existsSync(jar)) fail('backend', `missing Apalache ${VERSION} / TLC jar under QUINT_HOME`);
   return jar;
 }
 
 function java(jar, cwd, ...args) {
-  return spawnSync('java', ['-Xmx512m', '-XX:+UseParallelGC', `-Djava.io.tmpdir=${cwd}`, '-cp', jar, ...args], {
+  return spawnSync(process.env.QUINT_DIFF_JAVA ?? 'java', ['-Xmx512m', '-XX:+UseParallelGC', `-Djava.io.tmpdir=${cwd}`, '-cp', jar, ...args], {
     cwd, timeout: TIMEOUT, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024, encoding: 'utf8',
   });
 }

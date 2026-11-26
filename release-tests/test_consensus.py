@@ -42,6 +42,7 @@ def review(histories=None):
 class ConsensusTest(unittest.TestCase):
     # Use the same executable and report assertions as for the source-binding slice.
     invoke = base.CliTest.invoke
+    installed_invocation = base.CliTest.installed_invocation
     machine_report = base.CliTest.machine_report
     assert_rows = base.CliTest.assert_rows
     incomplete = base.CliTest.incomplete
@@ -196,6 +197,7 @@ class ConsensusTest(unittest.TestCase):
                 selected["new"]["bindings"][SECOND] = selector
                 self.incomplete(old, new, selected, "new", diagnostic)
 
+    @base.development_only
     def test_interrupted_new_candidate_is_not_an_addition(self):
         old, new = COMMITS["old"], COMMITS["new"]
         tools = self.tmp / "bin"
@@ -206,7 +208,7 @@ class ConsensusTest(unittest.TestCase):
         marker = self.tmp / "fault"
         real_java = shutil.which("java", path=self.env["PATH"])
         self.assertIsNotNone(real_java, "run this suite in nix develop")
-        env = self.env | {"PATH": str(tools) + os.pathsep + self.env["PATH"], "RELEASE_TEST_REAL_JAVA": real_java,
+        env = self.env | {"QUINT_DIFF_JAVA": str(shim), "RELEASE_TEST_REAL_JAVA": real_java,
                           "RELEASE_TEST_FAULT_MARKER": str(marker), "RELEASE_TEST_FAULT_OUTCOME": "1",
                           "RELEASE_TEST_JAVA_FAULT": "interrupt"}
         report = self.incomplete(old, new, review([[FIRST]]), "new", r"exploration: .*did not complete", env=env)
@@ -214,6 +216,7 @@ class ConsensusTest(unittest.TestCase):
         self.assertEqual(report["old"]["closure"]["queued"], 0)
         self.assertNotIn("closure", report["new"])
 
+    @base.development_only
     def test_compiled_unfiltered_projection_and_label_identity(self):
         expected = {"old": (9, 153, 162), "new": (9, 267, 330)}
         for name, revision in COMMITS.items():

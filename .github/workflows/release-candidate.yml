@@ -1,0 +1,84 @@
+name: Release candidate packages
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.wheel }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            wheel: manylinux_2_28_x86_64
+          - runner: macos-15
+            wheel: macosx_13_0_arm64
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0 # exact archived fixture source and fixture maker only
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+      - uses: cachix/install-nix-action@19effe9fe722874e6d46dd7182e4b8b7a43c4a99 # v31.10.0
+        with:
+          enable_kvm: false
+          extra_nix_config: experimental-features = nix-command flakes
+
+      - name: Prepare independent test fixtures
+        run: |
+          git init -q "$RUNNER_TEMP/dml"
+          git -C "$RUNNER_TEMP/dml" fetch --depth=1 --no-tags https://github.com/micha/dml.git \
+            819ac9d9c496bf652ea85af12b3369844df2b1e4 c540078318bf52313a33d856c7825d6b09566b17
+
+      - name: Install the flake package into a clean profile
+        run: nix profile add --profile "$RUNNER_TEMP/quint-diff-profile" .
+
+      - name: Build checksummed wheel and install with pipx
+        env:
+          WHEEL_PLATFORM: ${{ matrix.wheel }}
+          PIPX_HOME: ${{ runner.temp }}/quint-diff-pipx
+          PIPX_BIN_DIR: ${{ runner.temp }}/quint-diff-pipx-bin
+        run: |
+          python3 -B packaging/build-wheel.py --platform "$WHEEL_PLATFORM" --out-dir "$RUNNER_TEMP/quint-diff-dist"
+          python3 -m pip install 'pipx==1.16.6'
+          cd "$RUNNER_TEMP/quint-diff-dist"
+          PIP_NO_INDEX=1 python3 -m pipx install --skip-maintenance ./*.whl
+          shasum -a 256 -- *.whl *.tar.gz > SHA256SUMS
+
+      - name: Run development-only fault injection and projection checks
+        if: runner.os == 'Linux'
+        env:
+          RELEASE_TEST_DML_REPO: ${{ runner.temp }}/dml
+        run: nix develop --command python3 -B -m unittest discover -s release-tests -v
+
+      - name: Run acceptance against both installations outside the checkout
+        run: |
+          caller_git=$(command -v git)
+          mkdir "$RUNNER_TEMP/acceptance"
+          cd "$RUNNER_TEMP/acceptance"
+          for bin in "$RUNNER_TEMP/quint-diff-profile/bin" "$RUNNER_TEMP/quint-diff-pipx-bin"; do
+            nix develop "$GITHUB_WORKSPACE" --command python3 -B "$GITHUB_WORKSPACE/release-tests/check-installed.py" \
+              "$bin" --dml-repo "$RUNNER_TEMP/dml" --git "$caller_git"
+          done
+
+      # Binary workflow artifacts are also downloadable from public repositories.
+      # Keep the candidate binaries private until the distribution gate is cleared.
+      - name: Save checksums of the tested candidate files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: git-quint-diff-${{ matrix.wheel }}-checksums
+          path: ${{ runner.temp }}/quint-diff-dist/SHA256SUMS
+          if-no-files-found: error

@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -19,6 +20,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "git-quint-diff"
+INSTALLED = os.environ.get("RELEASE_TEST_INSTALLED_BIN")
+DML_REPO = os.environ.get("RELEASE_TEST_DML_REPO")
+development_only = unittest.skipIf(INSTALLED, "requires a local runtime or injected development backend")
 ARCHIVE = "064f97d4258c57a4dd83f8e27c65bb995dc38aa9"
 FIXTURE = "experiments/source_binding"
 COMMITS = {
@@ -60,7 +64,7 @@ class FixtureCase(unittest.TestCase):
                     dest.write_bytes(tar.extractfile(member).read())
         cls.fixture_repo = cls.scratch / "fixture"
         result = subprocess.check_output(
-            ["python3", "-B", str(cls.scratch / FIXTURE / "make_fixture.py"), str(cls.fixture_repo)],
+            [sys.executable, "-B", str(cls.scratch / FIXTURE / "make_fixture.py"), str(cls.fixture_repo)],
             env=cls.env, text=True,
         )
         commits = dict(line.split() for line in result.splitlines())
@@ -126,15 +130,33 @@ class FixtureCase(unittest.TestCase):
 
 
 class CliTest(FixtureCase):
+    def installed_invocation(self, *, dispatch=True):
+        # The fixture/oracle can use developer tools; the installed process
+        # gets neither them nor the checkout, and no system Node or Java.
+        tools, home = self.tmp / "installed-bin", self.tmp / "installed-home"
+        tools.mkdir(exist_ok=True)
+        home.mkdir(exist_ok=True)
+        git = os.environ["RELEASE_TEST_CALLER_GIT"]
+        if not (tools / "git").exists():
+            (tools / "git").symlink_to(git)
+        # Prevent Git's exec-path from adding unrelated developer binaries.
+        env = {
+            "PATH": os.pathsep.join([str(tools), INSTALLED]) if dispatch else str(home),
+            "GIT_EXEC_PATH": str(tools), "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+            "HOME": str(home), "TMPDIR": str(self.tmp), "LC_ALL": "C", "PYTHONUTF8": "1",
+            # These intentionally wrong paths must not bypass the package pins.
+            "QUINT_HOME": str(home), "QUINT_DIFF_QUINT_PACKAGE": str(home), "QUINT_DIFF_JAVA": str(home),
+            "NODE_OPTIONS": "--no-such-node-option", "JAVA_TOOL_OPTIONS": "-XX:NoSuchJavaOption",
+        }
+        command = [str(tools / "git"), "quint-diff"] if dispatch else [str(Path(INSTALLED) / "git-quint-diff")]
+        return command, env
+
     def invoke(self, old, new, review, *, machine=True, env=None):
         self.settings.write_text(json.dumps(review), encoding="utf8")
-        args = [str(CLI), "--review", str(self.settings)]
-        if machine:
-            args.append("--json")
-        return subprocess.run(
-            [*args, old, new], cwd=self.repo, env=env or self.env,
-            text=True, capture_output=True, timeout=130,
-        )
+        args = ["--review", str(self.settings), *(["--json"] if machine else []), old, new]
+        command, run_env = self.installed_invocation() if INSTALLED else ([str(CLI)], self.env)
+        return subprocess.run([*command, *args], cwd=self.repo, env=env or run_env,
+                              encoding="utf8", capture_output=True, timeout=300)
 
     def review(self, old, new, *, histories=None, old_side=None, new_side=None):
         return {
@@ -478,6 +500,60 @@ class CliTest(FixtureCase):
         self.incomplete("refactor", missing, self.review("refactor", missing, new_side=healthy), "new", missing)
         self.incomplete(missing, "refactor", self.review(missing, "refactor", old_side=healthy), "old", missing)
 
+    def test_missing_promised_blob_is_not_fetched(self):
+        self.git("-C", str(self.fixture_repo), "config", "uploadpack.allowFilter", "true")
+        selected = self.review("old", "changed")
+        # A reachable local promisor acts as a positive control for Git's
+        # default lazy-fetch behavior; the installed review must not use it.
+        old_repo = self.repo
+        self.repo = self.tmp / "partial"
+        self.git("clone", "--quiet", "--filter=blob:none", "--no-checkout", self.fixture_repo.as_uri(), str(self.repo),
+                 cwd=old_repo)
+        blob = self.git("rev-parse", "old:workflow.qnt").strip()
+        self.assertIn(f"?{blob}", self.git("rev-list", "--objects", "--all", "--missing=print").splitlines())
+        self.incomplete("old", "changed", selected, "old", r"snapshot:.*workflow\.qnt")
+        self.assertIn(f"?{blob}", self.git("rev-list", "--objects", "--all", "--missing=print").splitlines())
+        self.assertIn("module workflow", self.git("cat-file", "blob", blob))
+
+    @unittest.skipUnless(INSTALLED, "requires an installed command")
+    def test_installed_help_usage_and_requires_caller_git(self):
+        command, env = self.installed_invocation()
+        launcher = str(Path(INSTALLED) / "git-quint-diff")
+        help_result = subprocess.run([launcher, "--help"], cwd=self.repo, env=env, capture_output=True, text=True, timeout=15)
+        self.assertEqual(help_result.returncode, 0, help_result.stderr)
+        self.assertIn("Usage: git quint-diff", help_result.stdout)
+        invalid = subprocess.run(command, cwd=self.repo, env=env, capture_output=True, text=True, timeout=15)
+        self.assertEqual(invalid.returncode, 2, invalid.stderr)
+        self.assertIn("Usage: git quint-diff", invalid.stderr)
+        command, env = self.installed_invocation(dispatch=False)
+        review = self.review("old", "changed")
+        self.settings.write_text(json.dumps(review), encoding="utf8")
+        no_git = subprocess.run([*command, "--review", str(self.settings), "--json", "old", "changed"],
+                                cwd=self.repo, env=env, capture_output=True, text=True, timeout=15)
+        report = self.machine_report(no_git, "incomplete", review)
+        self.assertEqual(report["histories"], [])
+        self.assertRegex(report["diagnostics"][0]["message"], r"spawnSync git ENOENT")
+
+    @unittest.skipUnless(DML_REPO, "supply RELEASE_TEST_DML_REPO to exercise the exact upstream pair")
+    def test_historical_dml_pair_is_incomplete(self):
+        old = "819ac9d9c496bf652ea85af12b3369844df2b1e4"
+        new = "c540078318bf52313a33d856c7825d6b09566b17"
+        self.git("fetch", "--quiet", "--depth=1", "--no-tags", DML_REPO, old, new)
+        labels = ("stage_alternate", "publish_alternate_expected_3", "publish_alternate_expected_minus_2")
+
+        def side(stage, publish):
+            return {"entrypoint": "tests/recorded_return_design.qnt", "module": "recorded_return_design",
+                    "init": "init", "step": "step", "observe": "event.receipt", "hidden": [],
+                    "bindings": {label: {"callee": f"recorded_return_design::{callee}", "line": line, "column": 5}
+                                 for label, callee, line in zip(labels, ("stage", "publish", "publish"),
+                                                               (stage, publish, publish), strict=True)}}
+
+        selected = {"scenario": "recorded_return", "histories": [[labels[0], label] for label in labels[1:]],
+                    "old": side(154, 159), "new": side(160, 166)}
+        report = self.incomplete(old, new, selected, "old", r"parse:.*recorded_return_design\.qnt:.*QNT000.*observation")
+        self.assertEqual(report["histories"], [])
+        self.assertEqual([report[name]["revision"] for name in ("old", "new")], [old, new])
+
     def test_non_snapshot_and_non_regular_imports_are_rejected(self):
         self.checkout("refactor")
         marks = (self.repo / "marks.qnt").read_text(encoding="utf8")
@@ -601,10 +677,12 @@ class CliTest(FixtureCase):
         self.assertRegex(result.stdout, r"(?is)\bnew\b.*observ")
         self.assertNotRegex(result.stdout, r"(?mi)^\s*[-−+]\s+\d|no (?:behavioral )?changes")
 
+    @development_only
     def test_unavailable_backend_does_not_report_a_completed_comparison(self):
         env = self.env | {"QUINT_HOME": str(self.tmp / "unavailable")}
         self.incomplete("old", "changed", self.review("old", "changed"), None, r"backend", env=env)
 
+    @development_only
     def test_new_candidate_does_not_prove_closure_or_replace_required_evidence(self):
         real_java = shutil.which("java", path=self.env["PATH"])
         self.assertIsNotNone(real_java, "run this suite in nix develop")
@@ -615,7 +693,7 @@ class CliTest(FixtureCase):
         shim.chmod(0o700)
         marker = self.tmp / "fault"
         env = self.env | {
-            "PATH": str(tools) + os.pathsep + self.env["PATH"],
+            "QUINT_DIFF_JAVA": str(shim),
             "RELEASE_TEST_REAL_JAVA": real_java,
             "RELEASE_TEST_FAULT_MARKER": str(marker),
         }

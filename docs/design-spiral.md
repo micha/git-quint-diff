@@ -45,8 +45,16 @@ OLD self-comparison ran first and returned `{0}` for both histories on both side
 
 Reproduce with `nix develop --command python3 -B -m unittest discover -s release-tests -v` (24 tests passed). The [consensus fixture](../release-tests/fixtures/consensus/README.md) reconstructs the exact upstream commit IDs and required objects offline. These results cover the selected scenario and finite histories, not general Quint support.
 
-## Next milestone: first release candidate
+## First release candidate: packaging
 
-**Question:** Can someone install the command in a clean environment and reproduce the same scoped reports without access to this checkout or the prototype?
+**Question:** Can someone install the command and reproduce the same scoped reports without giving the installed process access to this checkout, the prototype, or system Node.js and Java?
 
-Package the executable and its pinned dependencies. Run the public-interface acceptance suite against the installed `git quint-diff` from disposable model repositories, including the source-site and consensus positives and DML fail-closed control. Document install and review commands, the supported scheduler subset, and the JSON and exit-status contract. Do not expand the scheduler subset or add working-tree comparisons before this gate passes.
+The [packaging gate](packaging.md) runs the same black-box checks through `git quint-diff` from a disposable model repository for both install paths. Nix supplies a default package with pinned store dependencies. A platform wheel supplies the same JS and Java sources and a checksummed runtime payload. The test harness keeps the development shell separate for independent oracles. No scheduler scope was added.
+
+The archived source-site fixture still has only `− 3` and `+ 4` for `[beta]`; the exact upstream consensus pair above still has only `+ 1` and `+ 2` for `[receive_round_1]`, with producing traces replayed against the original native scheduler. The exact historical DML pair still fails closed at OLD's parser (`QNT000`), and the separate typechecked derivative rejects locally chosen public arguments. A partial-clone control also rejects a relevant missing blob even when an accessible promisor could supply it. Fetch required model objects explicitly before reviewing.
+
+On Linux arm64 with system Git 2.43.0, both `nix profile add .` and an offline `pipx` install of the local arm64 test wheel were checked. In a network namespace without external connectivity and with the source checkout masked, the two installations emitted byte-identical JSON for `old → changed`. An initial wheel could launch Node and compile but not explore: the slim Java image lacked TLC's RMI and naming classes. The final wheel uses the pinned JAR's `jdeps` module set, excluding GUI support and adding source-file compilation and JAR filesystem modules. Both installed suites passed 22 tests, with the four development-only checks skipped in each. The development suite passed 26 tests and skipped the installed-only check. The tested local wheel's SHA-256 was `939ac5e9abd5d45f2a1a0fb9c21601be5c0d86c3b30e7d41bb01074467fb3b6e`; it is not a release artifact.
+
+## Next milestone: validate and publish an RC
+
+Run both native matrix jobs on the release commit (Linux x86-64 and macOS arm64), and resolve the first-party licensing and bundled dependency redistribution checks before tagging or offering binaries for download. The workflow saves checksums only until that gate is cleared. Do not expand the scheduler subset or add working-tree comparisons before this gate passes.

@@ -14,7 +14,7 @@ Run `git quint-diff --review FILE [--json] OLD NEW` in the model repository. `OL
 
 The runtime can bind calls through nested action-position `any`, `if`, and payload-free `match`, including in an imported scheduler. A public leaf is a direct action call or an `all` with one direct action call plus state guards or assignments. Calls may be nullary or take literal integers, Booleans, or strings. The model may retain native nondeterminism inside callees or hidden leaves. Caller-local or computed public arguments, payload-binding matches, and binding through scheduler helper bodies are outside the [release contract](supported-scheduler.md). All transitive file imports must be regular blobs in each exact revision.
 
-The pinned backend requires Quint 0.33.1, Apalache 0.62.4/TLC, and the JDK in `nix develop`. It has compiler and evaluator limits; for example, the translator cannot pass string literals containing backslashes, quotes, or control characters through losslessly. A backend error, timeout (60 seconds per Java process), or required evidence failure makes the review incomplete. This budget is not a semantic search cutoff.
+The [installed command](../README.md#install) uses pinned Quint 0.33.1 and Apalache 0.62.4/TLC. It does not fetch dependencies or missing Git objects when reviewing; fetch any required objects yourself before starting. The backend has compiler and evaluator limits; for example, the translator cannot pass string literals containing backslashes, quotes, or control characters through losslessly. A backend error, timeout (60 seconds per Java process), or required evidence failure makes the review incomplete. This budget is not a semantic search cutoff.
 
 ## Read the result
 

@@ -4,12 +4,20 @@ Review what two commits **add or remove from a Quint model's behavior**, not jus
 
 **Status:** Pre-release. The source-bound runtime supports imported, nested schedulers and pre-state label predicates. It has been checked on the [upstream Quint consensus pair](docs/first-release-acceptance.md#2-imported-consensus-scheduler). The pure-adapter prototype and seven design experiments are archived at `prototype-handoff` (`064f97d`).
 
+## Install
+
+Both packages use **Git 2.43 or newer** from your `PATH`. You do not need to install Node.js, Java, or Quint separately.
+
+- **Nix:** Run `nix profile add .` in this checkout. For a published tag, use `nix profile add github:micha/git-quint-diff/<tag>` instead (replace `<tag>`).
+- **pipx:** Run `pipx install --pip-args=--no-index <wheel-url>` with the URL of the matching release wheel, or pass the path to a locally built wheel. The initial wheel targets are Linux x86-64 with glibc 2.28+ and Apple Silicon with macOS 13.5+. Pre-release builds have not been published.
+
+See [packaging and installed acceptance](docs/packaging.md) to build or verify a candidate.
+
 ## Try it
 
-Run `nix develop` from this checkout to get the pinned Quint, Apalache/TLC, and Java tools. Then, still in this checkout:
+With the command installed, run this example from the source checkout (Python 3 is used to create the example repository and review):
 
 ```sh
-export PATH="$PWD:$PATH"
 review="$PWD/docs/source-review.example.json"
 scratch=$(mktemp -d)
 git archive prototype-handoff experiments/source_binding | tar -x -C "$scratch"

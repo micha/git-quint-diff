@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backend fault shim. Used only by the black-box test via a temporary PATH."""
+"""Backend fault shim selected explicitly by development-only tests."""
 
 import os
 from pathlib import Path

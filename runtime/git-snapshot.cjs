@@ -6,6 +6,9 @@ const path = require('node:path').posix;
 function git(...args) {
   const proc = spawnSync('git', ['--no-replace-objects', '--literal-pathspecs', ...args], {
     timeout: 10000, maxBuffer: 16 * 1024 * 1024,
+    // Read locally available objects only, even in a partial clone. Deny all
+    // transports as a second line of defense for Git without the lazy flag.
+    env: { ...process.env, GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '' },
   });
   if (proc.error || proc.status !== 0) {
     throw new Error(proc.error?.message ?? (proc.stderr.toString('utf8').trim() || `Git exited ${proc.status ?? proc.signal}`));

@@ -29,7 +29,7 @@ function quintApi() {
       serialize: req('./dist/src/cliReporting.js').jsonStringOfOutputStage,
     };
   } catch (error) {
-    fail('backend', `${error.message}; use nix develop`);
+    fail('backend', `cannot load the pinned Quint package: ${error.message}`);
   }
 }
 
