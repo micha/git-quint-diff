@@ -355,10 +355,18 @@ TMPDIR="$scratch" DML_FULL_PROJECTION=1 \
   python3 -B -m unittest discover -s experiments/dml -p test_source_projection_oracle.py -v
 ```
 
-## Next milestone: prepare the fresh implementation
+The opt-in full-graph regression also completed on a repeat run: seven tests passed in about five minutes, with peak resident memory about 1.1 GiB. The earlier interrupted run lost its scratch directory; it was not a semantic result.
+
+## Handoff: scope the fresh implementation
 
 **Question:** What is the smallest source-bound comparison that an independent reviewer can reproduce without any of the experiment drivers?
 
-Write a handoff with a supported-shape contract and black-box acceptance cases before archiving the prototype. Scope the first implementation to two committed snapshots, side-local imports, explicit per-revision bindings to supported direct calls with no arguments or literal arguments, short selected histories, and replayable outcome witnesses. Use the source-binding controls and the imported consensus receive histories to check this slice. Keep unsupported binding, backend failures, and unfinished searches visibly `incomplete`. Do not carry over the experiment flags, schema, or source rewriting implementation by default.
+The [supported-scheduler contract](supported-scheduler.md) and [black-box acceptance cases](first-release-acceptance.md) specify the supported slice: two committed snapshots, side-local imports, explicit per-revision bindings to nullary or literal-argument direct calls, short selected histories, and replayable outcome witnesses. The source-site refactor and imported consensus receive cases are positive gates. The consensus case requires nested `if`/payload-free `match` action positions and a pre-state round test; neither case requires binding local argument values. Equal effects do not establish call-site identity, and a failed search does not establish an empty outcome set.
 
-Defer general argument binding in the first slice. DML shows it can work without copying guards, but this experiment relies on pinned grammar and scope shapes, a mapping for every scheduler leaf, and an explicit old/new signature correspondence. Keep DML as both an initial fail-closed control and a later positive acceptance case. Full-graph erasure is an independent regression oracle, not a required pass of every review.
+Defer general argument binding. The DML experiment preserved guards and choices, but needed local-scope classification and explicit old/new signature correspondence. DML is an initial fail-closed control and a candidate positive case only after that scope expands. Full-graph erasure is a regression check, not a per-review requirement. The handoff is backed by the prototype experiments, not a claim that a new implementation passes the acceptance cases. Do not carry over experiment flags, schemas, or source rewriting by default.
+
+## Next milestone: start the fresh implementation
+
+**Question:** Can a standalone command pass the source-site and failure controls on committed blobs, without the prototype's evaluator or drivers in its runtime path?
+
+Freeze the prototype as an archive with its fixture and oracle commands. Bootstrap a clean implementation and a harness that invokes the shipped Git subcommand. Start with the source-site OLD self-comparison, then the refactor, changed revision, and isolation and failure controls. Use the imported consensus case to validate the same design before the first release, without adding model-specific recognition. Leave DML unsupported until a separate scope decision.

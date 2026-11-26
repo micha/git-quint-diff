@@ -4,7 +4,7 @@ Read [README.md](README.md) for the proposed CLI and approval example. This repo
 
 ## Design spiral
 
-This repository is an experimental prototype. Start each iteration with a design question, gather evidence from actual Quint models and Git reviews, and record what the evidence supports and what remains open in [docs/design-spiral.md](docs/design-spiral.md). Add prototype code only when it helps answer a question. Do not preserve interfaces or internals for their own sake; the plan is to archive this work and start the production implementation from scratch.
+This repository is an experimental prototype and handoff. Start each iteration with a design question, gather evidence from actual Quint models and Git reviews, and record what the evidence supports and what remains open in [docs/design-spiral.md](docs/design-spiral.md). The [supported-scheduler contract](docs/supported-scheduler.md) and [black-box acceptance cases](docs/first-release-acceptance.md) scope the first fresh implementation. Archive the prototype as evidence; do not extend it into production or preserve interfaces or internals for their own sake.
 
 ## Comparison contract
 

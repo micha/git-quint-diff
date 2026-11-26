@@ -6,11 +6,11 @@
 
 Git selects OLD and NEW. Resolve each side's entrypoint and transitive imports within that side's snapshot, without checking out another revision. The working-tree side, when requested, reads saved files, not editor buffers.
 
-One review definition selects the model, corresponding starting scenarios, public action labels, and an end-of-history observation. Use the same selected labels on both sides: a label may exist on just one side, so do not reduce the selection to the intersection of declared actions. Each side provides a starting set of states for each selected scenario. For the first version, explore only the named public steps; do not insert internal steps implicitly. Keep the first review definition fixture-specific. Direct selection of existing Quint definitions should be possible when they already expose the desired behavior; an adapter is an option, not a blanket requirement.
+One review definition selects the model, corresponding starting scenarios, public action labels, and an end-of-history observation. Use the same selected labels on both sides: a label may exist on just one side, so do not reduce the selection to the intersection of declared actions. Each side provides a starting set of states for each selected scenario. The pure-adapter prototype explores only the named public steps. The [first fresh implementation](supported-scheduler.md) selects existing Quint scheduler calls and permits explicitly designated hidden steps; it never inserts internal steps implicitly.
 
 For a given scenario and history:
 
-- Start with all states allowed by the scenario. For each action label, retain every successor reachable by that label from any retained state. The empty history observes the starting states.
+- Start with all states allowed by the scenario. For each action label, retain every successor reachable by that label from any retained state, including through any explicitly permitted hidden steps before that label. Observe immediately after the last label; the empty history observes the starting states.
 - Evaluate the observation on all final states and collect the distinct results. Compare these **outcome sets**, not individual executions, counts, or unobservable state. If an observation combines multiple fields, compare each observation as a whole to preserve correlations.
 - An outcome is added when NEW produces it and OLD is known not to; removal is the reverse. Replay on the producing side establishes presence. Proving absence on the other side requires complete exploration for that history; a chosen execution alone never proves absence.
 
@@ -20,9 +20,9 @@ An observed `denied` is an outcome of a matching execution. An absent public act
 
 Use factual `+` and `−` outcome labels, not a `Findings` column or generated interpretation. Report the review scope, witness evidence, and search status in both terminal and versioned JSON output. Visit shorter histories first and use a fixed order for ties and for choosing among equivalent witnesses. A witness should identify its scenario, public history, outcome, and enough of the producing execution to check it even when the history admits multiple outcomes.
 
-A maximum history length limits **which histories** were checked. It does not invalidate differences for histories explored completely. Failing to finish a history within the requested scope is **incomplete**, not just depth-bounded. Report both the requested bound and any incompleteness when they coexist. A depth-limited result is bounded unless the tool can also establish coverage beyond the bound. Exhausting one finite depth alone is not a claim about longer histories.
+An explicit list of histories defines the review scope; a complete result can be exhaustive for that list without covering other histories. When asking instead for all histories up to a maximum length, the bound limits **which histories** were checked, not the validity of differences for histories explored completely. An original-transition bound limits **which executions** were checked. Report limits explicitly. Failing to finish a history within the requested scope is **incomplete**, not a completed bounded result. Neither an explicit list nor exhaustion through a depth establishes anything about unsearched histories or executions.
 
-## First CLI replay checks
+## Pure-adapter prototype replay checks
 
 Verify the finite comparison model with Quint/TLC first and record the checked scope. Then use the CLI on real Git revisions and check these cases against that model:
 

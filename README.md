@@ -2,7 +2,7 @@
 
 Review what a change to a [Quint](https://quint.sh/) specification **adds or removes from its behavior**, not just what changed in the source. This is a standalone CLI project for terminal and CI use. A future `:QuintDiff` in [nvim-quint-viewer](https://github.com/micha/nvim-quint-viewer) can consume the same results.
 
-**Status: design spiral, not the production implementation.** This bounded prototype compares two committed Git snapshots using a finite Quint review adapter. We are using it to learn from real reviews before archiving this work and starting a fresh implementation. Prototype flags, adapters, and JSON are not commitments for that implementation. See the [experiment log and next questions](docs/design-spiral.md).
+**Status: experimental prototype and handoff, not the production implementation.** The CLI here compares two committed Git snapshots using a finite Quint review adapter. The [experiment record](docs/design-spiral.md) informed the [supported-scheduler contract](docs/supported-scheduler.md) and [black-box acceptance cases](docs/first-release-acceptance.md) for a fresh implementation. The prototype flags, adapters, and JSON are not commitments for that implementation.
 
 ## What a review looks like
 
@@ -37,7 +37,7 @@ git quint-diff v1 v2             # v1 → v2
 git quint-diff main...feature    # merge base → feature
 ```
 
-Git selects the snapshots; review options select the model, starting scenario, and public actions. The prototype takes those options explicitly and supports only the two-revision form above. Each side resolves its own imports from its own snapshot, so an unchanged entrypoint can still have different behavior. This is a Git subcommand, not a per-file `git diff` driver. Ordinary `git diff` stays as it is.
+Git selects the snapshots; review options select the model, starting scenario, and public actions. Both the prototype and the planned first release are limited to the two-commit form; the other forms are deferred. Each side resolves its own imports from its own snapshot, so an unchanged entrypoint can still have different behavior. This is a Git subcommand, not a per-file `git diff` driver. Ordinary `git diff` stays as it is.
 
 The terminal view will label added (`+`) and removed (`−`) outcomes directly, with no `Findings` column. Versioned JSON will carry the same changes and search scope for automation. If exploration stops at a bound, the output will state the bound rather than imply equivalence. See the [comparison design and acceptance plan](docs/comparison-contract.md) for details.
 
