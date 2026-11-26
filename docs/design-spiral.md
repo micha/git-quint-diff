@@ -94,6 +94,43 @@ The live checks repeat the review with invalid saved working-tree source, add a 
 
 **Scope:** This exhausts only two explicitly selected length-2 histories, each with four model transitions. It does not compare prefixes as separate histories, exhaust the original scheduler, or check the DML implementation. The two real DML histories each have one outcome per side; the extra outcome in the test is synthetic. Selecting the actions was enough here, but choosing the bindings and the scheduler context still required reading both revisions. The wrapper and compiler plumbing are not production interfaces.
 
-## Next experiment: a real nondeterministic review
+## Experiment 3: preserve DML's scheduler choices
 
-**Question:** Can direct action selection retain multiple real outcomes for one public history without requiring the reviewer to spell out the internal schedule? Pick an existing spec with genuine nondeterminism and an independently checkable revision that removes one of several outcomes. First compare it with itself, then review the change. Record how the binding identifies the public history, what internal steps it needs to allow, and whether the check preserves every reachable outcome. Defer the production interface until that evidence is in.
+**Question:** Can the checker retain multiple outcomes for one public history without requiring the reviewer to spell out the internal schedule?
+
+### Prediction (before running the comparison)
+
+Reuse the exact DML model and commits from Experiment 1 and the two length-2 public histories from Experiment 2. Instead of fixing the schedule, run the original `init` and `step`. Match public operations by their event report (command and requested arguments, **not** the receipt). Allow all original transitions with an empty report before the selected publish; reject other reported operations and stop immediately on the selected publish. In particular, the reviewer does not prescribe when to start the return, when to clear the stage report, or whether another writer updates `main`.
+
+Observe the publication receipt alone: `alternate` (`12`) or `absent` (`0`). The ref state is part of the execution evidence, not the comparison key. OLD should accept when `main` still matches `previousMain`, and reject if a report-free scheduler step moves `main` first. Both should be reachable for the same public history. NEW should reject the factor-3 request regardless of schedule but retain both outcomes for the matching factor −2. Compare OLD with itself first (no delta), then OLD with NEW (only `− 12` for the factor-3 history). A search restricted to four original transitions cannot fit a competing write; it should not be mistaken for full scheduler coverage.
+
+### Binding and outcome sets
+
+[`scheduler_actions.py`](../experiments/dml/scheduler_actions.py) compiles each committed blob unchanged. A history monitor on the compiled `step` reads the successor event and tracks whether the stage and publish labels have occurred. It does not assign any model variable or encode any transition guard. Both publish labels select the request for `alternate` with expected main `previousMain`, `aliasesMain=false`, and `failAt=0`; the labels constrain the factor on NEW and share the same original action on OLD. With no transition bound the monitor has no step counter. TLC can collapse cycles that return to the same full model state and history phase, not states that merely share a receipt.
+
+| History (after `stage_alternate`) | OLD outcomes | NEW outcomes | OLD → NEW |
+| --- | --- | --- | --- |
+| `publish_alternate_expected_3` | `{0, 12}` | `{0}` | `− 12` |
+| `publish_alternate_expected_minus_2` | `{0, 12}` | `{0, 12}` | None |
+
+The self-comparison ran first and found both receipts for each history on each side, with no delta. A shortest witness for the OLD rejection uses five original steps: start return, stage, clear the report, a report-free write moving `main` from `3` to `0`, and publish. The OLD acceptance skips that write. NEW can reject the factor-3 request even with `main` still at `3`. These are all executions of `publish`, not missing actions or disabled steps. The receipt-only comparison does not claim that rejection reasons or ref states are unchanged.
+
+All four unbounded closing passes (two for self and two for the change) had **572 generated, 182 distinct, 0 queued**; each OLD side took five TLC runs and the changed NEW side took four, including the closure run. The result is exhaustive **for these two public histories and the report-free transitions allowed by the monitor**. It does not compare shorter prefixes, other requests, paths with other reported operations, or the DML implementation. At `--max-transitions 4`, OLD has only `{12}` per history, so the mismatch reports `− 12` and `+ 0` within that smaller scope. At five steps, the OLD rejection is reachable and `+ 0` disappears. At three, neither history finishes on either side. `init` does not count against the transition bound.
+
+### Independent checks and reproduction
+
+The [oracle](../experiments/dml/nondeterminism-oracle.sh) uses the original `init` and `step` without a monitor. It found the current-main and stale-main outcomes in four and five transitions respectively and checked that the only reports along each witness were the requested stage and publish. Its stale-main witness moved `main` to `competingMain` (`4`), a different path to the same receipt. The covers establish presence, not exclusion. Separate invariants checked to closure over the **full original scheduler** restrict the selected requests' receipts to `0` or `12` on OLD, and permit `12` only for the matching factor on NEW. Together with the covers, they independently establish the outcome sets. Those closing runs reached depth 28 including `init`: OLD had **1,269,121 generated, 611,528 distinct, 0 queued**; NEW had **2,367,361 generated, 1,160,648 distinct, 0 queued**.
+
+```sh
+export DML_CHECKOUT=../dml DML_QUINT=/absolute/path/to/quint-0.34.0
+nix develop --command python3 -B experiments/dml/scheduler_actions.py "$DML_CHECKOUT" "$DML_QUINT" --self
+nix develop --command python3 -B experiments/dml/scheduler_actions.py "$DML_CHECKOUT" "$DML_QUINT" --json
+nix develop --command bash experiments/dml/nondeterminism-oracle.sh "$DML_CHECKOUT" "$DML_QUINT"
+nix develop --command python3 -B -m unittest discover -s experiments/dml -v
+```
+
+The live tests also check scope at three, four, and five transitions, stable results and witnesses with invalid saved working-tree source in a scratch clone, and `incomplete` rather than empty results when the backend is unavailable. The same 120-second invocation timeout and 32-outcome limit from Experiment 2 apply to this comparison. Run concurrent compilations with different `DML_TLC_ENDPOINT` ports if they conflict.
+
+## Next experiment: select actions without an event report
+
+**Question:** Can a reviewer identify public actions in an existing model that does not record an event report, without copying its scheduler guards or losing hidden interleavings? Use a different real Quint model, preferably with transitive imports. Select public transitions by action identity or an explicit binding, and independently check that the original scheduler allows the producing witnesses and that the binding does not relabel unrelated transitions with the same state effect. Compare exact Git revisions and record where the model needs annotation versus what the tool can infer. Do not make the DML event convention or the experimental monitor a requirement for the production tool.

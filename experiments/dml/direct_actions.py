@@ -56,35 +56,49 @@ def require_success(proc, operation):
     return proc.stdout
 
 
-def compile_snapshot(dml, quint, side, directory):
+def load_model(dml, revision, directory):
     # These exact revisions of this fixed entrypoint have no transitive imports.
     # Copy bytes from the commit only, not from the checkout or from a syntax shim.
     blob = require_success(run([
-        "git", "--no-replace-objects", "-C", str(dml), "cat-file", "blob",
-        f"{REVISIONS[side]}:{MODEL}",
+        "git", "--no-replace-objects", "-C", str(dml), "cat-file", "blob", f"{revision}:{MODEL}",
     ]), "read committed model")
-    (directory / Path(MODEL).name).write_bytes(blob)
-    (directory / DRIVER_FILE).write_text(render_driver(side), encoding="utf-8")
+    path = directory / Path(MODEL).name
+    path.write_bytes(blob)
+    return path
+
+
+def compile_tla(quint, source, module):
     tla = require_success(run([
-        str(quint), "compile", DRIVER_FILE, "--target", "tlaplus", "--init", "init",
+        str(quint), "compile", source.name, "--target", "tlaplus", "--init", "init",
         "--step", "step", "--verbosity", "0", "--apalache-version", APALACHE_VERSION,
         "--server-endpoint", os.environ.get("DML_TLC_ENDPOINT", "localhost:18822"),
-    ], directory), "compile selected Quint actions").decode("utf-8")
-    if not re.search(r"^----+ MODULE " + DRIVER_MODULE + r" ----+$", tla, re.M):
+    ], source.parent), "compile selected Quint actions").decode("utf-8")
+    if not re.search(r"^----+ MODULE " + re.escape(module) + r" ----+$", tla, re.M):
         raise Incomplete("Quint did not emit the expected TLA+ module")
     return tla
+
+
+def compile_snapshot(dml, quint, side, directory):
+    load_model(dml, REVISIONS[side], directory)
+    driver = directory / DRIVER_FILE
+    driver.write_text(render_driver(side), encoding="utf-8")
+    return compile_tla(quint, driver, DRIVER_MODULE)
 
 
 def int_literal(value):
     return str(value) if value >= 0 else f"({value})"
 
 
-def invariant(tla, seen):
-    # Check that every end state projects to an already witnessed pair of
-    # (history, outcome). With no witnesses, all end states violate the check.
+def add_definitions(tla, definitions):
     body, separator, terminator = tla.rstrip().rpartition("\n")
     if not separator or not re.fullmatch(r"=+", terminator):
         raise Incomplete("TLA+ module has no terminator")
+    return f"{body}\n\n{definitions}\n====\n"
+
+
+def invariant(tla, seen):
+    # Check that every end state projects to an already witnessed pair of
+    # (history, outcome). With no witnesses, all end states violate the check.
     end = " \\/ ".join(f"{PHASE} = {phase}" for phase in HISTORIES)
     known = []
     for phase, outcome in sorted(seen):
@@ -93,7 +107,7 @@ def invariant(tla, seen):
         ]
         known.append("(" + " /\\ ".join(comparison) + ")")
     allowed = " \\/ ".join(known) or "FALSE"
-    return f"{body}\n\n{INVARIANT} == ({end}) => ({allowed})\n====\n"
+    return add_definitions(tla, f"{INVARIANT} == ({end}) => ({allowed})")
 
 
 def read_witness(path):
@@ -132,22 +146,21 @@ def read_witness(path):
     }
 
 
-def enumerate_outcomes(jar, directory, tla):
+def close_outcomes(jar, source, render, decode, required_histories, *, init="q_init", step="q_step"):
     """Keep covering new projections until an exhaustive TLC run proves closure."""
-    source = directory / f"{DRIVER_MODULE}.tla"
     source.with_suffix(".cfg").write_text(
-        f"INIT q_init\nNEXT q_step\nINVARIANT {INVARIANT}\n", encoding="utf-8",
+        f"INIT {init}\nNEXT {step}\nINVARIANT {INVARIANT}\n", encoding="utf-8",
     )
-    trace = directory / "witness.json"
+    trace = source.parent / "witness.json"
     seen = {}
     for round_number in range(1, MAX_OUTCOMES + 2):
         trace.unlink(missing_ok=True)
-        source.write_text(invariant(tla, seen), encoding="utf-8")
+        source.write_text(render(seen), encoding="utf-8")
         proc = run([
             "java", "-Xmx512m", "-XX:+UseParallelGC", "-cp", str(jar), "tlc2.TLC",
             "-deadlock", "-workers", "1", "-fp", "0", "-noGenerateSpecTE",
             "-dumpTrace", "json", trace.name, source.name,
-        ], directory)
+        ], source.parent)
         log = log_text(proc)
         if proc.returncode == 0:
             stats = STATS.findall(log)
@@ -156,15 +169,15 @@ def enumerate_outcomes(jar, directory, tla):
             if ("Model checking completed. No error has been found." not in log
                     or len(stats) != 1 or int(stats[0][2]) != 0 or trace.exists()):
                 raise Incomplete(f"TLC did not confirm exhaustion:\n{log.strip()}")
-            missing = set(HISTORIES) - {phase for phase, _ in seen}
+            missing = set(required_histories) - {phase for phase, _ in seen}
             if missing:
-                labels = "; ".join(" → ".join(HISTORIES[phase]) for phase in sorted(missing))
+                labels = "; ".join(" → ".join(required_histories[phase]) for phase in sorted(missing))
                 raise Incomplete(f"expected fixture path did not finish: {labels}")
             return seen, dict(zip(("generated", "distinct", "queued"), map(int, stats[0])), rounds=round_number)
         if (proc.returncode != 12
                 or f"Error: Invariant {INVARIANT} is violated." not in log):
             raise Incomplete(f"TLC failed (exit {proc.returncode}):\n{log.strip()}")
-        key, witness = read_witness(trace)
+        key, witness = decode(trace)
         if key in seen:
             raise Incomplete(f"TLC returned an already excluded outcome: {key}")
         if len(seen) == MAX_OUTCOMES:
@@ -172,7 +185,12 @@ def enumerate_outcomes(jar, directory, tla):
         seen[key] = witness
 
 
-def compare(dml, quint, report):
+def enumerate_outcomes(jar, directory, tla):
+    source = directory / f"{DRIVER_MODULE}.tla"
+    return close_outcomes(jar, source, lambda seen: invariant(tla, seen), read_witness, HISTORIES)
+
+
+def backend_jar(quint):
     if require_success(run([str(quint), "--version"]), "check Quint version").strip() != QUINT_VERSION.encode():
         raise Incomplete(f"expected Quint {QUINT_VERSION}; the default prototype shell pins 0.33.1")
     home = os.environ.get("QUINT_HOME")
@@ -181,6 +199,11 @@ def compare(dml, quint, report):
     jar = Path(home).resolve() / f"apalache-dist-{APALACHE_VERSION}/apalache/lib/apalache.jar"
     if not jar.is_file():
         raise Incomplete(f"missing TLC jar: {jar}")
+    return jar
+
+
+def compare(dml, quint, report):
+    jar = backend_jar(quint)
     with tempfile.TemporaryDirectory(prefix="git-quint-diff-direct-") as scratch:
         outcomes = {}
         for side in REVISIONS:
