@@ -67,12 +67,15 @@ def load_model(dml, revision, directory):
     return path
 
 
-def compile_tla(quint, source, module):
-    tla = require_success(run([
+def compile_tla(quint, source, module, *, invariant=None):
+    args = [
         str(quint), "compile", source.name, "--target", "tlaplus", "--init", "init",
         "--step", "step", "--verbosity", "0", "--apalache-version", APALACHE_VERSION,
         "--server-endpoint", os.environ.get("DML_TLC_ENDPOINT", "localhost:18822"),
-    ], source.parent), "compile selected Quint actions").decode("utf-8")
+    ]
+    if invariant is not None:
+        args += ["--invariant", invariant]
+    tla = require_success(run(args, source.parent), "compile selected Quint actions").decode("utf-8")
     if not re.search(r"^----+ MODULE " + re.escape(module) + r" ----+$", tla, re.M):
         raise Incomplete("Quint did not emit the expected TLA+ module")
     return tla

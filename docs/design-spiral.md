@@ -131,6 +131,49 @@ nix develop --command python3 -B -m unittest discover -s experiments/dml -v
 
 The live tests also check scope at three, four, and five transitions, stable results and witnesses with invalid saved working-tree source in a scratch clone, and `incomplete` rather than empty results when the backend is unavailable. The same 120-second invocation timeout and 32-outcome limit from Experiment 2 apply to this comparison. Run concurrent compilations with different `DML_TLC_ENDPOINT` ports if they conflict.
 
-## Next experiment: select actions without an event report
+## Experiment 4: select actions without an event report
 
-**Question:** Can a reviewer identify public actions in an existing model that does not record an event report, without copying its scheduler guards or losing hidden interleavings? Use a different real Quint model, preferably with transitive imports. Select public transitions by action identity or an explicit binding, and independently check that the original scheduler allows the producing witnesses and that the binding does not relabel unrelated transitions with the same state effect. Compare exact Git revisions and record where the model needs annotation versus what the tool can infer. Do not make the DML event convention or the experimental monitor a requirement for the production tool.
+**Question:** Can a reviewer identify public actions in an existing model that does not record an event report, without copying its scheduler guards or losing hidden choices? Can the checker avoid mistaking a different action with the same effect for a selected call?
+
+### Prediction (before running the comparison)
+
+Use upstream [Quint](https://github.com/quint-co/quint)'s `examples/classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt`, which imports and re-exports `ConsensusAlg.qnt`. Compare OLD `883cc2c579bd11954129d207899790e80fb8c91e` with NEW `35df73a703259890303659e421f79016897993b3` ("Fix union and improve comments"). The scheduler lives in the imported module, and the transition change is in its `receiveMessages` action. The other file changes only in test comments. A scenario module imports `KSetAgreementConsensus`, giving a file chain from the review driver to the model.
+
+- Use the model's `init` and `step`, with `N=3` (the source's `Procs` is `1..N-1`), `F=1`, `ACTUAL_FAULTS=1`, `K=1`, and `MAX_ROUNDS=2`. Do not fix initial proposals, which process crashes, or who gets the optional message.
+- Select the scheduler call to `receiveMessages` in round 1 and in round 2. Other original branches are hidden, not new steps. Observe the number of process slots (including the crashed process) whose `S` contains the empty set immediately after the selected public call. This measures the model's explicit no-delivery marker, not the eventual consensus decision.
+- For `receive_round_1`, OLD should only allow `0` and NEW should allow `0`, `1`, and `2`: the revised choice gives each of the two processes an independent no-delivery option. For `receive_round_1 → receive_round_2`, both should allow only `0`: the first round spends the sole crash, and no later optional crash message is available. Compare OLD with itself first. A separate check should demonstrate that a test helper with an identical full-state effect is not a scheduled public call.
+
+### What the binding had to specify
+
+[`action_identity.py`](../experiments/consensus/action_identity.py) stages the two exact committed files in isolation per side and compiles the scenario. It annotates the named calls inside the **compiled original** `step` with a fresh action tag. The scheduler body is copied mechanically; erasing those tag assignments yields the original body, including its guards, stage updates, and nondeterministic choices. It never calls `receiveMessages` on its own or selects it by looking at `S`. Hidden calls do not advance the public history. The two outcomes are measured immediately after the respective receives; the second receive ends exploration on that path.
+
+The reviewer supplied the initialized instance, the specific scheduler call and round-to-label mapping, and the observation. Nothing had to be added to the original source. The importer can resolve the model through the committed file chain, but this experiment recognizes a pinned compiler's specific scheduler shape and rejects missing or ambiguous expected call sites. It does not infer which actions are public or generally resolve source identities after flattening. Quint 0.34.0 compiles with `--invariant=true` to omit an unrelated historical `validity` formula using `getOnlyElement`; compiling that formula in this older model failed without the option. `init` and `step` still come from the original model.
+
+### Observed results
+
+| Selected history | OLD | NEW | OLD → NEW |
+| --- | --- | --- | --- |
+| `receive_round_1` | `{0}` | `{0, 1, 2}` | `+ 1`, `+ 2` |
+| `receive_round_1 → receive_round_2` | `{0}` | `{0}` | None |
+
+OLD self-comparison ran first and had no delta. The monitor closed in three TLC runs on each OLD side (**135 generated, 135 distinct, 0 queued** in the closing pass), and five runs on changed NEW (**279 generated, 237 distinct, 0 queued**). Round-1 witnesses take three original transitions; round-2 witnesses take seven. At a bound of two neither history finishes, and at three only the first does. No bound was needed for the table, but it is exhaustive only for the stated instance, histories, and observation at the instant of each selected call. The scheduler fixes the order of kinds of steps; this checks retained choices within that order, not arbitrary interleaving or consensus properties. In particular, the second round's identical observation does not show that its complete states or decisions are equivalent.
+
+### Independent check and negative control
+
+The [native oracle](../experiments/consensus/native-oracle.sh) uses pinned Quint 0.33.1 and the original scheduler without action tags. Reachability covers find each listed result; separate invariants exclude other results. Its closing passes include the rest of the original scheduler: OLD **171 generated, 153 distinct, 0 queued**; NEW **339 generated, 267 distinct, 0 queued**, both at depth nine including `init`. Independently replaying the comparison JSON with that compiler verifies all six witnesses against the native `init` and `step`, constraining all seven original state variables at every frame. Changing one intermediate proposal from `1` to `9` without changing the labels or reported outcome caused replay to fail.
+
+The declared test helper `receiveMessage(Set())`, together with the same stage update, satisfies the **full** before/after transition predicate of a native all-delivery receive on both revisions. The oracle proves that overlap for zero omissions, then refutes a deliberately false disjointness check with a first-round witness on each side. The original scheduler only invokes `receiveMessages`; a matcher based on whether a named action's relation accepts the state pair would misattribute the helper. The monitor does not report the helper, and its binding tests reject both a missing call replaced by the helper and a duplicate call site.
+
+```sh
+export CONSENSUS_CHECKOUT=/path/to/quint-repo CONSENSUS_QUINT=/absolute/path/to/quint-0.34.0
+nix develop --command python3 -B experiments/consensus/action_identity.py "$CONSENSUS_CHECKOUT" "$CONSENSUS_QUINT" --self
+nix develop --command python3 -B experiments/consensus/action_identity.py "$CONSENSUS_CHECKOUT" "$CONSENSUS_QUINT" --json > /tmp/consensus-comparison.json
+nix develop --command bash experiments/consensus/native-oracle.sh "$CONSENSUS_CHECKOUT" /tmp/consensus-comparison.json
+nix develop --command python3 -B -m unittest discover -s experiments/consensus -v
+```
+
+The live tests also rerun with both saved working-tree files invalid, check stable witness order, and require `incomplete` for missing snapshots or an unavailable backend. The original CLI is unchanged. The checker reuses the earlier limits: 120 seconds per invocation and 32 history/outcome pairs per side.
+
+## Next experiment: source-level bindings across revisions
+
+**Question:** Can a reviewer bind public labels to source-level call sites without depending on flattened names or compiler formatting, including when two call sites invoke the same definition? Try a model with two such sites and a revision that moves or renames one without changing its behavior. Check a no-delta control with explicitly mapped bindings, a real changed or removed call, and an ambiguous binding that must fail rather than silently choose. Verify that erasing the monitor recovers the original transitions in each revision; record what can be inferred and what requires a reviewer-supplied mapping.
