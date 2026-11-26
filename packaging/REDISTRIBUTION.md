@@ -24,7 +24,17 @@ JDK release metadata. Keep both files with the matching wheel(s); do not offer a
 binary wheel for download without making the matching source materials
 available under the applicable terms (OpenJDK: GPL v2 with Classpath Exception).
 `build-wheel.py` specifies the `jlink` command used to assemble the image.
-The build also emits the pinned Apalache 0.62.4 and TLA+ Tools 1.8.0 sources.
+The build also emits the pinned Apalache 0.62.4 source and a TLA+ Tools
+source archive for investigation. **That TLA+ Tools archive is not verified
+corresponding source.** Apalache 0.62.4 was released on 2026-10-12; its
+build declares TLC `v1.8.0`, but the asset now at that URL was built on
+2026-11-26 (`X-Git-Revision: 1138302995a41cc5649c0321992e4146d8ff06e2`)
+and has different `tlc2/TLC.class` code. Use the independently matched
+[October source revision](https://github.com/tlaplus/tlaplus/tree/94d0c5070852b37b801bb8998c436383ab7ee37b)
+to prepare a replacement companion. The raw source tarballs contain
+third-party binary files; audit what is redistributed and document the
+inputs needed to rebuild.
+
 TLC's EPL-2.0 notice is `META-INF/LICENSE_tla2tools.md` in the JAR, not the
 separate `License_tla2tools.txt` for Microsoft material. Keep the repack script
 available with the release sources.

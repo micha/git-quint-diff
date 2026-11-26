@@ -61,6 +61,21 @@ On Linux arm64 with system Git 2.43.0, both `nix profile add .` and an offline `
 
 Run the matrix on a candidate source branch; the workflow saves only checksums. The owner selected MIT for first-party code and documentation. The native jobs must pass on the commit to be tagged; that alone does not clear the bundled dependency gate.
 
-The exact upstream Apalache 0.62.4 release JAR (`e5223915…`) embeds cvc5, Z3, and zstd-jni native builds, including binaries for platforms the CLI does not target. Neither the IR translator nor the tested TLC path requires them. Both install forms now use a deterministic repack that removes 325 entries, including 39 native binaries; the regression checks every retained entry byte for byte and verifies the output SHA-256 `1d2dab08ca132c1d7cac2ca0cc3c1f743525b18a51aef3c5d97a4d549d30d5cd`. The independent oracle still uses the unmodified backend. Wheel builds now emit the pinned TLC and Apalache sources as well as the Temurin companions.
+The exact upstream Apalache 0.62.4 release JAR (`e5223915…`) embeds cvc5, Z3, and zstd-jni native builds, including binaries for platforms the CLI does not target. Neither the IR translator nor the tested TLC path requires them. Both install forms now use a deterministic repack that removes 325 entries, including 39 native binaries; the regression checks every retained entry byte for byte and verifies the output SHA-256 `1d2dab08ca132c1d7cac2ca0cc3c1f743525b18a51aef3c5d97a4d549d30d5cd`. The independent oracle still uses the unmodified backend. Wheel builds now emit Apalache sources and the declared TLA+ Tools source archive as well as the Temurin companions.
 
-Do not tag or offer binaries yet. The remaining JVM contents still need a [redistribution audit](../packaging/REDISTRIBUTION.md). For example, the retained Logback 1.5.32 classes were matched byte for byte against the official Maven artifact, but the merged JAR lacks a separately identified Logback notice. Do not expand scheduler scope or add working-tree comparisons before the release gate passes.
+### Native validation
+
+[Actions run 45851704558](https://github.com/micha/git-quint-diff/actions/runs/45851704558) passed on `8e14ac3fb2982c0f349bccce9d75c5038a931eed` on Linux x86-64 and macOS arm64. Each of the four installed runs (Nix and pipx on both hosts) passed 22 tests with four development-only skips, using Git 2.56.1. The Linux development run passed 31 tests with one installed-only skip. This checks the candidate on those native runners, not the oldest supported OS versions. The local arm64 Linux builds also passed both installed suites with Git 2.43.0; their backend JAR hashes and source-site fixture JSON matched between install forms.
+
+CI retained only checksum manifests. The four companion file digests matched the build pins on both runners. The tested wheel digests were:
+
+| Wheel platform | SHA-256 |
+| --- | --- |
+| `manylinux_2_28_x86_64` | `d7b706efaecd86aa861efca7177a3a9d59d88d388ef8b44a983ccc7139f2d10e` |
+| `macosx_13_0_arm64` | `270df994aa07eacde65a36296bd2c1860447ffdad07229a71d9359a5f60b0986` |
+
+### Next milestone: clear redistribution and revalidate
+
+Do not tag or offer binaries yet. The current `v1.8.0` TLC release asset postdates the Apalache archive and its `tlc2/TLC.class` differs from the embedded class. The emitted TLA+ Tools archive is investigative material, not corresponding source. Two independent builds from `94d0c5070852b37b801bb8998c436383ab7ee37b` (raw archive SHA-256 `aaa632e07322f2c3f5923bf9f691b963f261d2f59bba271b4012539ce3d1271d`) matched all 969 production class outputs byte for byte against the embedded JAR. Build under `tlatools/org.lamport.tlatools` with Temurin 17.0.21+9 and Ant 1.10.15: `ant -f customBuild.xml clean compile`, then compare `class/**/*.class` by ZIP member name. The six test helper classes selected by the upstream distribution build and the shipped standard TLA+ modules were also checked. The match identifies the TLC project source; it does not clear the raw archive's vendored binaries for distribution.
+
+Replace the investigative archive with an audited source companion from the matched revision, and finish the [redistribution audit](../packaging/REDISTRIBUTION.md) of the remaining payload. For example, the retained Logback 1.5.32 classes were matched byte for byte against the official Maven artifact, but the merged JAR lacks a standalone Logback license notice. Then rerun both native jobs on the exact release commit before publishing. Do not expand scheduler scope or add working-tree comparisons before the release gate passes.
