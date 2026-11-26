@@ -40,7 +40,7 @@ const siteAt = (sourceMap, id) => {
 };
 const describe = ({ path, line, column }) => `${path}:${line}:${column}`;
 
-function parseModel(q, snap, config) {
+function parseModel(q, snap, config, { discovery = false } = {}) {
   const ids = q.newIdGenerator();
   const check = (errors, sourceMap, phase) => {
     if (!errors.length) return;
@@ -126,13 +126,6 @@ function parseModel(q, snap, config) {
     }
     return p.decls[0];
   };
-  const obs = expression(OBS, config.observe, '<observation>', 'observation');
-  const predicates = new Map();
-  for (const [label, selector] of Object.entries(config.bindings)) {
-    if (selector?.when === undefined) continue;
-    const def = expression(`qdWhen${predicates.size + 1}`, selector.when, '<label predicate>', 'binding');
-    predicates.set(label, def);
-  }
   const selectAction = (alias, name) => {
     const p = q.parseExpressionOrDeclaration(`action ${alias} = ${name}`, '<action selector>', ids, parsed.sourceMap);
     if (p.kind === 'error') check(p.errors, parsed.sourceMap, 'binding');
@@ -141,9 +134,20 @@ function parseModel(q, snap, config) {
     }
     return p.decls[0];
   };
-  const init = selectAction(INIT, config.init);
+  const predicates = new Map();
+  let obs, init;
+  if (!discovery) {
+    obs = expression(OBS, config.observe, '<observation>', 'observation');
+    for (const [label, selector] of Object.entries(config.bindings)) {
+      if (selector?.when === undefined) continue;
+      const def = expression(`qdWhen${predicates.size + 1}`, selector.when, '<label predicate>', 'binding');
+      predicates.set(label, def);
+    }
+    init = selectAction(INIT, config.init);
+    selected.declarations.push(obs, ...predicates.values(), init);
+  }
   const step = selectAction(STEP, config.step);
-  selected.declarations.push(obs, ...predicates.values(), init, step);
+  selected.declarations.push(step);
   const resolved = q.parsePhase4toposort(q.parsePhase3importAndNameResolution(parsed));
   check(resolved.errors, resolved.sourceMap, 'parse');
   const { table } = resolved;
@@ -154,12 +158,12 @@ function parseModel(q, snap, config) {
     }
     return def;
   };
-  originalAction(init, config.init);
+  if (init) originalAction(init, config.init);
   const scheduler = originalAction(step, config.step);
   const [errors, analysis] = q.analyzeModules(table, resolved.modules);
   check(errors, resolved.sourceMap, 'typecheck');
-  const type = analysis.types.get(obs.id)?.type?.kind;
-  if (!['int', 'str', 'bool'].includes(type) || !readOnly(analysis, obs)) {
+  const type = obs && analysis.types.get(obs.id)?.type?.kind;
+  if (obs && (!['int', 'str', 'bool'].includes(type) || !readOnly(analysis, obs))) {
     fail('observation', 'expected a read-only integer, string, or Boolean observation');
   }
   return { ids, resolved, location, scheduler, definitions, predicates, analysis, type, module: selected.name };
@@ -214,9 +218,8 @@ function labelPredicate(model, label, when) {
   return { helper: def.name, variable: variable.id, name: lhs.name, value, when };
 }
 
-function bind(model, config) {
+function schedulerSites(model) {
   const { location, scheduler, resolved, analysis, definitions } = model;
-  const entrypoint = relative('.', config.entrypoint);
   const branches = schedulerLeaves(scheduler.expr, analysis, location);
   if (!branches.length) fail('binding', 'expected a nonempty scheduler');
   const directCall = expr => {
@@ -225,31 +228,64 @@ function bind(model, config) {
     const declaration = def && definitions.get(def.id);
     return declaration && { expr, site: { ...location(expr), callee: `${declaration.module}::${declaration.action}`, declaration } };
   };
-  // Any other action call in a public leaf (including a nested or locally
-  // bound one) would make this more than the supported single-call leaf.
-  function calls(expr) {
-    const own = directCall(expr);
+  function collectCalls(expr, found) {
+    const call = directCall(expr);
+    if (call) found.push(call);
     const children = expr.kind === 'app' ? expr.args : expr.kind === 'let' ? [expr.opdef.expr, expr.expr] :
       expr.kind === 'lambda' ? [expr.expr] : [];
-    return [...(own ? [own] : []), ...children.flatMap(calls)];
+    for (const child of children) collectCalls(child, found);
   }
-  const bindable = branches.flatMap(leaf => (opcode(leaf.expr, 'actionAll') ? leaf.expr.args : [leaf.expr])
-    .map(directCall).filter(Boolean).map(c => ({ ...c, leaf })));
+  const guardOrAssignment = term => opcode(term, 'assign') || readOnly(analysis, term);
+  return branches.map(leaf => {
+    const terms = opcode(leaf.expr, 'actionAll') ? leaf.expr.args : [leaf.expr];
+    const direct = terms.map(directCall).filter(Boolean);
+    const calls = [];
+    collectCalls(leaf.expr, calls);
+    const expr = direct[0]?.expr;
+    const publicCall = direct.length === 1 && calls.length === 1 && !expr.args?.some(arg => !scalar(arg)) &&
+      terms.every(term => term === expr || guardOrAssignment(term)) ? direct[0] : null;
+    return { ...leaf, direct, calls, publicCall };
+  });
+}
+
+function discover(model) {
+  const branches = schedulerSites(model);
+  const counts = new Map();
+  const callKey = ({ path, line, column, callee }) => JSON.stringify([path, line, column, callee]);
+  for (const branch of branches) {
+    for (const { site } of branch.direct) {
+      const key = callKey(site);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  return {
+    scheduler: model.definitions.get(model.scheduler.id),
+    leaves: branches.map(branch => {
+      const site = branch.publicCall?.site;
+      if (!site || counts.get(callKey(site)) !== 1) return { leaf: branch.site, call: null };
+      const { declaration, ...selector } = site;
+      return { leaf: branch.site, call: { selector, declaration } };
+    }),
+  };
+}
+
+function bind(model, config) {
+  const entrypoint = relative('.', config.entrypoint);
+  const branches = schedulerSites(model);
+  const direct = branches.flatMap(leaf => leaf.direct.map(c => ({ ...c, leaf })));
   const bindings = Object.fromEntries(Object.entries(config.bindings).map(([label, selector]) => {
     if (selector === null) return [label, null];
     const matches = c => c.site.callee === selector.callee &&
       (selector.line === undefined || atPosition(c.site, selector, entrypoint));
-    const candidates = bindable.filter(matches);
+    const candidates = direct.filter(matches);
     if (candidates.length !== 1) {
-      if (!candidates.length && branches.some(l => calls(l.expr).some(matches))) {
+      if (!candidates.length && branches.some(l => l.calls.some(matches))) {
         fail('binding', `${label}: unsupported scheduler nesting or locally bound call for ${selector.callee}`);
       }
       fail('binding', `${label}: ${candidates.length ? 'ambiguous' : 'no matching'} direct call site for ${selector.callee}`);
     }
-    const { leaf, expr, site } = candidates[0];
-    const guardOrAssignment = term => opcode(term, 'assign') || readOnly(analysis, term);
-    if (calls(leaf.expr).length !== 1 || expr.args?.some(arg => !scalar(arg)) ||
-        (opcode(leaf.expr, 'actionAll') && leaf.expr.args.some(term => term !== expr && !guardOrAssignment(term)))) {
+    const { leaf, site } = candidates[0];
+    if (!leaf.publicCall) {
       fail('binding', `${label}: unsupported public leaf or arguments at ${describe(site)}; use one direct call with scalar literals`);
     }
     const predicate = selector.when === undefined ? null : labelPredicate(model, label, selector.when);
@@ -278,7 +314,7 @@ function bind(model, config) {
     if (!cases.length || cases.some(c => c.when)) cases.push({ site: leaf.site, unless: cases.map(c => c.when) });
     return cases.map((c, j) => ({ ...c, branch: i + 1, id: j === 0 ? i + 1 : ++extra }));
   });
-  return { branches, leaves, bindings, hidden, scheduler: definitions.get(scheduler.id) };
+  return { branches, leaves, bindings, hidden, scheduler: model.definitions.get(model.scheduler.id) };
 }
 
 function compilation(q, model, binding) {
@@ -349,4 +385,4 @@ function compilation(q, model, binding) {
     types: flattenedAnalysis.types, table: flattenedTable });
 }
 
-module.exports = { ReviewError, fail, IDENT, quintApi, parseModel, bind, compilation };
+module.exports = { ReviewError, fail, IDENT, quintApi, parseModel, discover, bind, compilation };

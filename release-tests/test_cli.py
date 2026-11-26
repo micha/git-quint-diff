@@ -158,6 +158,16 @@ class CliTest(FixtureCase):
         return subprocess.run([*command, *args], cwd=self.repo, env=env or run_env,
                               encoding="utf8", capture_output=True, timeout=300)
 
+    def invoke_discovery(self, revision, step, *, machine=True):
+        command, env = self.installed_invocation() if INSTALLED else ([str(CLI)], self.env | {
+            # Discovery does not load the translator or run Java.
+            "QUINT_HOME": str(self.tmp / "missing-tlc"), "QUINT_DIFF_JAVA": str(self.tmp / "missing-java"),
+        })
+        args = ["--discover", "--entrypoint", "workflow.qnt", "--module", "workflow", "--step", step,
+                *(["--json"] if machine else []), revision]
+        return subprocess.run([*command, *args], cwd=self.repo, env=env,
+                              encoding="utf8", capture_output=True, timeout=30)
+
     def review(self, old, new, *, histories=None, old_side=None, new_side=None):
         return {
             "scenario": "from_zero",
@@ -304,6 +314,73 @@ class CliTest(FixtureCase):
                     terminal = self.invoke("old", new, review, machine=False)
                     self.assertEqual(terminal.returncode, 0, (terminal.stdout, terminal.stderr))
                     self.assert_terminal(terminal.stdout, review)
+
+    def test_discovery_lists_distinct_calls_in_each_committed_scheduler(self):
+        self.file("workflow.qnt", "invalid staged scheduler\n")
+        self.git("add", "workflow.qnt")
+        for file in ("workflow.qnt", "marks.qnt"):
+            self.file(file, "invalid saved source\n")
+        status = self.git("status", "--porcelain=v1").splitlines()
+        for revision in COMMITS:
+            with self.subTest(revision=revision):
+                side = self.side(revision)
+                result = self.invoke_discovery(revision, side["step"])
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                report = json.loads(result.stdout)
+                self.assertEqual((report["version"], report["mode"], report["status"]), (1, "discovery", "complete"))
+                self.assertEqual((report["requestedRevision"], report["revision"]), (revision, COMMITS[revision]))
+                self.assertEqual(report["diagnostics"], [])
+                self.assertEqual(report["blobs"], {name: self.git("rev-parse", f"{revision}:{name}").strip()
+                                                   for name in ("workflow.qnt", "marks.qnt")})
+                self.assertEqual(report["scheduler"]["action"], side["step"])
+                calls = [leaf["call"] for leaf in report["leaves"] if leaf["call"] is not None]
+                expected = side["bindings"]
+                order = sorted(expected, key=lambda label: (expected[label]["line"], expected[label]["column"]))
+                self.assertEqual([c["selector"] for c in calls],
+                                 [expected[label] | {"path": "workflow.qnt"} for label in order])
+                for call in calls:
+                    self.assert_site(call["selector"] | {"declaration": call["declaration"]}, call["selector"])
+                self.assertEqual([leaf["leaf"] for leaf in report["leaves"] if leaf["call"] is None],
+                                 [site | {"path": "workflow.qnt"} for site in side["hidden"]])
+                self.assertEqual(self.invoke_discovery(revision, side["step"]).stdout, result.stdout)
+        terminal = self.invoke_discovery("refactor", "dispatch", machine=False)
+        self.assertEqual(terminal.returncode, 0, terminal.stderr)
+        for phrase in ("Discovery: complete", "no reachability or cross-revision mapping", "Leaf workflow.qnt:",
+                       "Call workflow.qnt:15:7 marks::record", "Call workflow.qnt:18:28 marks::record"):
+            self.assertIn(phrase, terminal.stdout)
+        self.assertEqual(self.git("status", "--porcelain=v1").splitlines(), status)
+
+    def test_discovery_reports_source_failures_and_omits_unsupported_call(self):
+        # A direct call taking a computed argument exists but is not a supported public selector.
+        self.replace("workflow.qnt", "record(4),", "record(x + 2),")
+        child = self.commit("Compute a call argument in the scheduler")
+        result = self.invoke_discovery(child, "dispatch")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = [row["call"]["selector"] for row in json.loads(result.stdout)["leaves"] if row["call"]]
+        self.assertEqual(calls, [self.side(child, "changed")["bindings"]["alpha"] | {"path": "workflow.qnt"}])
+        marks = (self.repo / "marks.qnt").read_text(encoding="utf8")
+        self.file("marks.qnt", "not Quint source\n")
+        malformed = self.commit("Supply a malformed committed import")
+        self.file("marks.qnt", marks)
+        for revision, step, phase in (("no-such-revision", "dispatch", "snapshot"),
+                                      (malformed, "dispatch", "parse"), (child, "noSuchStep", "binding")):
+            with self.subTest(revision=revision, step=step):
+                result = self.invoke_discovery(revision, step)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                report = json.loads(result.stdout)
+                self.assertEqual(report["status"], "incomplete")
+                self.assertEqual(report["leaves"], [])
+                self.assertEqual(report["diagnostics"][0]["phase"], phase)
+
+    def test_discovery_requires_one_revision_and_no_review_file(self):
+        command, env = self.installed_invocation() if INSTALLED else ([str(CLI)], self.env)
+        source = ["--discover", "--entrypoint", "workflow.qnt", "--module", "workflow", "--step", "step"]
+        for args in ([*source, "old", "new"], [*source, "--review", "not-read.json", "old"],
+                     [*source[:-2], "old"], [*source, "--module", "workflow", "old"]):
+            result = subprocess.run([*command, *args], cwd=self.repo, env=env,
+                                    encoding="utf8", capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("Usage:", result.stderr)
 
     def test_invalid_binding_is_neither_absent_nor_disabled(self):
         good = self.review("old", "refactor")
@@ -512,6 +589,12 @@ class CliTest(FixtureCase):
         blob = self.git("rev-parse", "old:workflow.qnt").strip()
         self.assertIn(f"?{blob}", self.git("rev-list", "--objects", "--all", "--missing=print").splitlines())
         self.incomplete("old", "changed", selected, "old", r"snapshot:.*workflow\.qnt")
+        discovery = self.invoke_discovery("old", "step")
+        self.assertEqual(discovery.returncode, 1, discovery.stdout + discovery.stderr)
+        report = json.loads(discovery.stdout)
+        self.assertEqual(report["status"], "incomplete")
+        self.assertEqual(report["leaves"], [])
+        self.assertEqual(report["diagnostics"][0]["phase"], "snapshot")
         self.assertIn(f"?{blob}", self.git("rev-list", "--objects", "--all", "--missing=print").splitlines())
         self.assertIn("module workflow", self.git("cat-file", "blob", blob))
 

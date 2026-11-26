@@ -2,6 +2,20 @@
 
 Run `git quint-diff --review FILE [--json] OLD NEW` in the model repository. `OLD` and `NEW` are commit IDs or refs resolving to commits. This command does not implement index, working-tree, or merge-base syntax. Try the [upstream consensus review](source-trial.md). The smaller [moved-call example](source-review.example.json) uses the fixture commits in [acceptance §1](first-release-acceptance.md#1-source-binding-identical-effects-moved-sites-literal-changes).
 
+## Discover selectors
+
+Before writing a review, list where the selected scheduler calls actions in one committed snapshot:
+
+```sh
+git quint-diff --discover --entrypoint path/to/model.qnt --module Model --step step OLD
+```
+
+Repeat for `NEW` with the entrypoint, module, and visible scheduler name from that revision. Discovery resolves and typechecks the committed entrypoint and its imports, without a review file, constants, an initializer, or a Java run. It lists leaves in scheduler order and shows each supported call's position and resolved declaration. The leaf may start at an `all`, not at the call within it.
+
+With `--json`, the version 1 `discovery` report gives the resolved commit and source blob IDs. Copy `leaves[].call.selector` into `bindings` for a public call you choose. For a step you explicitly want to allow as hidden, copy `leaves[].leaf` into `hidden` instead. `call: null` means no supported public selector was offered for that leaf, not that an action is absent or disabled. Choose your own labels, cross-revision mappings, predicates, and hidden steps.
+
+Exit `0` (`complete`) means source discovery succeeded, not that calls are reachable or that the model will compile and close under the review backend. Exit `1` (`incomplete`) reports a snapshot, source, or backend diagnostic and offers no selectors; exit `2` means invalid arguments. Only a review checks outcomes.
+
 ## Review file
 
 - `scenario` names the comparison. `histories` is the exact list of public label sequences to check, each of length 0–2. Use `[]` as a history to observe all initialized states without taking a step.

@@ -18,7 +18,7 @@ This runs the packaged command on a temporary fixture made from two real upstrea
 
 To keep the command, run `nix profile add .` (Nix 2.30+) from the candidate source. For a local wheel instead, see [packaging](docs/packaging.md); public wheels are on hold. Both installed packages use **Git 2.43 or newer** from your `PATH`; neither needs a separate Node.js, Java, or Quint install.
 
-The [full walkthrough](docs/source-trial.md) covers the [review file](docs/consensus-review.json) and independent witness replay if you want to check how the demo works.
+The [full walkthrough](docs/source-trial.md) covers the [review file](docs/consensus-review.json) and independent witness replay if you want to check how the demo works. To write your own review, [discover call sites](docs/source-review.md#discover-selectors) in each commit before choosing public labels and hidden steps.
 
 The tool reads only committed Git objects, including transitive imports. It reports exhaustive closure **only for the selected histories**; neither a failed binding nor an unfinished search is an empty outcome set. See [review syntax and current limits](docs/source-review.md), the [scheduler contract](docs/supported-scheduler.md), and the [acceptance plan](docs/first-release-acceptance.md).
 

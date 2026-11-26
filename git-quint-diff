@@ -9,9 +9,11 @@ const quint = require('./runtime/quint-model.cjs');
 const tlc = require('./runtime/tlc.cjs');
 
 const SIDES = ['old', 'new'];
-const usage = 'Usage: git quint-diff --review FILE [--json] OLD NEW';
+const usage = 'Usage: git quint-diff --review FILE [--json] OLD NEW\n' +
+  '       git quint-diff --discover --entrypoint PATH --module MODULE --step ACTION [--json] REV';
 const isObject = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const text = x => typeof x === 'string' && x.trim() !== '';
+const actionName = x => text(x) && x.split('::').every(s => quint.IDENT.test(s));
 const positive = x => Number.isSafeInteger(x) && x > 0;
 const keys = (x, allowed) => isObject(x) && Object.keys(x).every(k => allowed.includes(k));
 const position = x => positive(x.line) && positive(x.column);
@@ -20,17 +22,31 @@ const historyKey = JSON.stringify;
 
 function args(argv) {
   const revisions = [];
-  let review, json = false, options = true;
+  const source = {};
+  let review, discover = false, json = false, options = true;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (options && arg === '--') options = false;
     else if (options && arg === '--review' && !review && argv[i + 1]) review = argv[++i];
+    else if (options && arg === '--discover' && !discover) discover = true;
     else if (options && arg === '--json' && !json) json = true;
-    else if (options && arg.startsWith('-')) throw new Error(`unknown or repeated option: ${arg}`);
+    else if (options && ['--entrypoint', '--module', '--step'].includes(arg)) {
+      const key = arg.slice(2);
+      if (Object.hasOwn(source, key)) throw new Error(`repeated option: ${arg}`);
+      if (!argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(`missing value for ${arg}`);
+      source[key] = argv[++i];
+    } else if (options && arg.startsWith('-')) throw new Error(`unknown or repeated option: ${arg}`);
     else revisions.push(arg);
   }
-  if (!review || revisions.length !== 2) throw new Error('expected a review file and two committed revisions');
-  return { review, revisions, json };
+  if (discover) {
+    if (review || revisions.length !== 1 || !text(source.entrypoint) ||
+        !quint.IDENT.test(source.module ?? '') || !actionName(source.step)) {
+      throw new Error('--discover needs an entrypoint, module, scheduler step and one committed revision (no review file)');
+    }
+  } else if (!review || revisions.length !== 2 || Object.keys(source).length) {
+    throw new Error('expected a review file and two committed revisions');
+  }
+  return { review, discover, source, revisions, json };
 }
 
 function reviewConfig(file) {
@@ -46,7 +62,7 @@ function reviewConfig(file) {
     const side = data[name];
     require(keys(side, ['entrypoint', 'module', 'constants', 'init', 'step', 'observe', 'bindings', 'hidden']) &&
       text(side.entrypoint) && text(side.observe) && text(side.module) && quint.IDENT.test(side.module) &&
-      ['init', 'step'].every(k => text(side[k]) && side[k].split('::').every(s => quint.IDENT.test(s))),
+      ['init', 'step'].every(k => actionName(side[k])),
     `${name}: specify entrypoint, module, init, step and observe`);
     require(side.constants === undefined || (isObject(side.constants) &&
       Object.entries(side.constants).every(([k, v]) => quint.IDENT.test(k) && scalar(v))),
@@ -125,7 +141,7 @@ function review(config, revisions) {
       phase = 'binding';
       const binding = quint.bind(model, options);
       Object.assign(report[side], { bindings: binding.bindings, hidden: binding.hidden, scheduler: binding.scheduler,
-        blobs: Object.fromEntries([...snap.blobs].sort(([a], [b]) => tlc.compare(a, b))), observationType: model.type });
+        blobs: blobIds(snap), observationType: model.type });
       phase = 'compile';
       prepared.push({ binding, type: model.type, module: model.module, ir: quint.compilation(api, model, binding) });
     }
@@ -151,6 +167,47 @@ function review(config, revisions) {
     if (scratch) fs.rmSync(scratch, { recursive: true, force: true });
   }
   return report;
+}
+
+function blobIds(snap) {
+  return Object.fromEntries([...snap.blobs].sort(([a], [b]) => tlc.compare(a, b)));
+}
+
+function discover(config, requestedRevision) {
+  const report = { version: 1, mode: 'discovery', status: 'incomplete', requestedRevision, revision: null,
+    ...config, scheduler: null, blobs: {}, leaves: [], diagnostics: [] };
+  let phase = 'snapshot';
+  try {
+    report.revision = git.resolve(requestedRevision);
+    const snap = git.snapshot(report.revision);
+    phase = 'backend';
+    const api = quint.quintApi();
+    phase = 'parse';
+    const model = quint.parseModel(api, snap, config, { discovery: true });
+    phase = 'binding';
+    Object.assign(report, quint.discover(model), { blobs: blobIds(snap), status: 'complete' });
+  } catch (error) {
+    report.diagnostics.push({ phase: error.phase ?? phase, message: error.message });
+  }
+  return report;
+}
+
+function discoveryTerminal(report) {
+  const loc = ({ path, line, column }) => `${path}:${line}:${column}`;
+  const lines = [`Discovery: ${report.status}`, `Commit: ${report.revision ?? report.requestedRevision}`,
+    `Entrypoint: ${report.entrypoint} (${report.module}, step ${report.step})`,
+    'Scope: source positions only; no reachability or cross-revision mapping checked.'];
+  if (report.scheduler) {
+    const { module, action } = report.scheduler;
+    lines.push(`Scheduler: ${module}::${action} at ${loc(report.scheduler)}`);
+    for (const { leaf, call } of report.leaves) {
+      lines.push(`  Leaf ${loc(leaf)}`, call ?
+        `    Call ${loc(call.selector)} ${call.selector.callee} → ${loc(call.declaration)}` :
+        '    No supported public selector');
+    }
+  }
+  for (const { phase, message } of report.diagnostics) lines.push(`${phase}: ${message}`);
+  return lines.join('\n');
 }
 
 function terminal(report) {
@@ -192,10 +249,12 @@ if (process.argv.length === 3 && process.argv[2] === '--help') {
   console.log(usage);
 } else {
   try {
-    const { review: file, revisions, json } = args(process.argv.slice(2));
-    const report = review(reviewConfig(file), revisions);
-    console.log(json ? JSON.stringify(report, null, 2) : terminal(report));
-    process.exitCode = report.status === 'exhaustive' ? 0 : 1;
+    const options = args(process.argv.slice(2));
+    const report = options.discover ? discover(options.source, options.revisions[0]) :
+      review(reviewConfig(options.review), options.revisions);
+    console.log(options.json ? JSON.stringify(report, null, 2) :
+      options.discover ? discoveryTerminal(report) : terminal(report));
+    process.exitCode = report.status === 'incomplete' ? 1 : 0;
   } catch (error) {
     console.error(`${error.message}\n${usage}`);
     process.exitCode = 2;

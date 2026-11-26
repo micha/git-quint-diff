@@ -149,6 +149,58 @@ class ConsensusTest(unittest.TestCase):
         self.assertEqual(self.complete(old, new, selected), forward)
         self.assertEqual(repository_state(), before)
 
+    def test_discover_each_upstream_revision_then_review(self):
+        command, env = self.installed_invocation() if base.INSTALLED else (
+            [str(base.CLI)], self.env | {"QUINT_HOME": str(self.tmp), "QUINT_DIFF_JAVA": str(self.tmp / "no-java")},
+        )
+        # Discovery should not require an observation, constants, an init action, or Java.
+        module, step = "KSetAgreementConsensus", "step"
+        selected = {"scenario": "discovered_consensus", "histories": HISTORIES}
+        for name, revision in COMMITS.items():
+            with self.subTest(side=name):
+                result = subprocess.run(
+                    [*command, "--discover", "--entrypoint", ENTRYPOINT, "--module", module, "--step", step,
+                     "--json", revision], cwd=self.repo, env=env, capture_output=True, text=True, timeout=30,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                discovered = json.loads(result.stdout)
+                self.assert_fields(discovered, {
+                    "version": 1, "mode": "discovery", "status": "complete", "requestedRevision": revision,
+                    "revision": revision, "entrypoint": ENTRYPOINT, "module": module, "step": step,
+                    "scheduler": DECLARATION | {"action": "step", "line": 241}, "diagnostics": [],
+                    "blobs": {path: git(self.repo, self.env, "rev-parse", f"{revision}:{path}").decode().strip()
+                              for path in (ENTRYPOINT, SCHEDULER)},
+                })
+                self.assertNotIn("bindings", discovered)
+                self.assertNotIn("hidden", discovered)
+                self.assertNotIn("histories", discovered)
+                self.assertEqual([leaf["leaf"] for leaf in discovered["leaves"]], [
+                    {"path": SCHEDULER, "line": line, "column": column}
+                    for line, column in [HIDDEN["stuttering"], HIDDEN["crash"], HIDDEN["sendMessages"],
+                                         (248, 24), HIDDEN["computeAction"]]  # The Receiving arm starts with `all`.
+                ])
+                calls = [leaf["call"] for leaf in discovered["leaves"]]
+                self.assertEqual([call["selector"]["callee"] for call in calls], [
+                    "ConsensusAlg::" + action for action in
+                    ("stuttering", "crash", "sendMessages", "receiveMessages", "computeAction")
+                ])
+                receive_index, = (i for i, call in enumerate(calls)
+                                  if call["selector"]["callee"] == "ConsensusAlg::receiveMessages")
+                receive = calls[receive_index]
+                self.assert_fields(receive, {"selector": RECEIVE, "declaration": DECLARATION})
+                # The review author, not discovery, chooses names, predicates, histories,
+                # which leaves may be hidden, constants, and the observation on each side.
+                selected[name] = {
+                    "entrypoint": ENTRYPOINT, "module": module, "step": step, "init": "init",
+                    "constants": CONSTANTS, "observe": OBSERVE,
+                    "bindings": {FIRST: receive["selector"] | {"when": "round == 1"},
+                                 SECOND: receive["selector"] | {"when": "round == 2"}},
+                    "hidden": [leaf["leaf"] for i, leaf in enumerate(discovered["leaves"]) if i != receive_index],
+                }
+        self.assert_rows(self.complete(COMMITS["old"], COMMITS["new"], selected), [
+            ([FIRST], [0], [0, 1, 2], [("+", 1), ("+", 2)]), (HISTORIES[1], [0], [0], []),
+        ])
+
     def test_round_two_cannot_hide_an_out_of_order_or_unclassified_receive(self):
         new = COMMITS["new"]
         selected = review([[SECOND]])
