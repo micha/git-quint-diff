@@ -156,4 +156,12 @@ Both collaborators fetched the actual upstream commits in [acceptance §2](first
 
 The guide's replay helper independently compiled NEW's original `init` and `step`, matched all seven state variables at every frame, and recomputed both outcomes. The second collaborator separately compiled both original graphs and used a different checker to reproduce the outcome sets, replay the forward and reverse witnesses, and reject changing a later proposal to `9`. The standalone helper also rejected that mutation. Both collaborators checked the guide in archive-style directories, and `nix build --rebuild --no-link .` matched the existing Nix output from the unpacked source. With the historical DML repo supplied, the development suite ran 42 tests: 41 passed and one installed-only case was skipped. No runtime, scheduler support, packaging pins, or public artifacts changed.
 
-This was a **collaborator dry run**, not an outside-user session or a cold-store build. The next milestone is to hand one outside Quint user the exact source archive and guide and have them run it unaided on their machine. Record their time to the first independently replayed witness or their first concrete blocker. Keep public wheels and project binary caches on hold; resume packaging work only if the trial shows that source-first installation is the blocker.
+This was a **collaborator dry run**, not an outside-user session or a cold-store build.
+
+## Outside-user trial: handoff ready, feedback pending
+
+**Question:** Where does a Quint user who did not help build the candidate first get stuck, or how long does it take them to replay a witness unaided on their usual machine?
+
+The [forwardable handoff](outside-trial.md) fixes the candidate to `158ec18df0242c68995975fde4f06f8361060df5`, records the source archive digest, and asks for the host, elapsed time, and first replay or concrete blocker. The archive carries the tested guide and review; the handoff instructions are separate. Both collaborators independently verified the archive digest and ran the guide from extracted copies on Linux arm64 with existing Nix stores. The clean-config run needed the declared `nix-command` and `flakes` features enabled. Both reproduced a replay failure with spaces in `TMPDIR` and successful replay with `/tmp`. The handoff documents these prerequisites without changing the candidate. No outside participant has reported a result yet.
+
+The next milestone is one unaided outside run. If the participant reaches replay, try a change in their own Quint model next. If they cannot reach replay, fix or document the first blocker and repeat the trial. Public wheels and project binary caches remain on hold; revisit source-first packaging only if installation is the blocker.
