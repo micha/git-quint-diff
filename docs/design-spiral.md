@@ -231,6 +231,65 @@ python3 -B experiments/source_binding/source_bindings.py compare "$scratch/repo"
 python3 -B -m unittest discover -s experiments/source_binding -v
 ```
 
-## Next experiment: source bindings in a real imported scheduler
+## Experiment 6: source bindings in a real imported scheduler
 
-**Question:** Does source-level tagging still preserve behavior when a real scheduler selects a nondeterministic action through nested `if` and `match` branches? Revisit the exact consensus revisions and scenario from Experiment 4. Bind `receiveMessages` at its source site in the imported scheduler and keep the existing round-to-label rule. Require the same complete outcome sets and replayable witnesses, independently check unfiltered scheduler projection, and report unsupported nesting as `incomplete` rather than copying guards or falling back to compiled names. Use that evidence to decide which scheduler constructs are worth supporting in the fresh implementation.
+**Question:** Does source-level tagging still preserve behavior when a real scheduler selects a nondeterministic action through nested `if` and `match` branches?
+
+### Prediction (before running the comparison)
+
+Revisit Experiment 4's upstream pair: OLD `883cc2c579bd11954129d207899790e80fb8c91e` and NEW `35df73a703259890303659e421f79016897993b3`. Instantiate `KSetAgreementConsensus` with `N=3`, `F=1`, `ACTUAL_FAULTS=1`, `K=1`, and `MAX_ROUNDS=2`, through its original import of `ConsensusAlg`. Bind `receiveMessages` at its source call in `ConsensusAlg.step`; the pre-state round determines `receive_round_1` or `receive_round_2`. Observe the count of process slots whose `S` contains the empty set immediately after each receive, including the crashed process's slot. Run OLD against itself first: both histories should reach `{0}` on each side. Then expect `{0}` → `{0,1,2}` after round 1, with a witness for each of the two new counts, and `{0}` → `{0}` after `receive_round_1 → receive_round_2`.
+
+Replay those witnesses through original `init` and `step` with all seven original variables constrained. Check erasure on the full scheduler separately from the selected-history filter, comparing outgoing projected edges from each reachable tagged state. Unsupported nesting should be `incomplete`, not an empty outcome or a reason to reconstruct guards or match compiled scheduler calls.
+
+### Binding and instrumentation
+
+[`source_actions.py`](../experiments/consensus/source_actions.py) stages the exact regular blobs in separate scratch directories. The scenario driver imports `KSetAgreementConsensus.qnt`, which in turn imports and re-exports `ConsensusAlg.qnt`. In both commits the selector is `ConsensusAlg.qnt:248:30`: a direct nullary call in the `Receiving` arm. Quint 0.33.1's AST, resolver table and source map check that position against the `receiveMessages` declaration at `181:10`. The checker follows the conditional's action branches and the payload-free `match` arms, down to a bare action or one direct action with simple assignments. It does not search arbitrary subexpressions for a matching name or use compiled scheduler names. Stale, missing, duplicate, and unsupported sites fail before exploration; using a helper with the same effect does not rescue a failed binding.
+
+Adding a tag to original `step` directly failed typechecking: unrelated upstream runs join `init` and `step` and require the same update effects. Instead, append a tagged sibling `reviewStep` using the exact source slice of the original predicate and insert wrappers only at AST-delimited leaves. A separate `reviewInit` calls the original `init`. The committed scheduler and other declarations remain intact, and the intermediate import is never edited. Erasing the wrappers from the sibling recovers the original predicate byte for byte: no guards, assignments, or nondeterministic choices were reconstructed. The selected leaf writes the current round to a fresh tag; hidden leaves and initialization write zero. Only the separate history checker interprets the tag as progress and stops at the second selected receive.
+
+### Observed results
+
+OLD self-comparison ran first and found `{0}` on both sides of both histories, with no delta. The change reproduced Experiment 4, this time without editing compiled scheduler text:
+
+| Selected history | OLD | NEW | OLD → NEW |
+| --- | --- | --- | --- |
+| `receive_round_1` | `{0}` | `{0, 1, 2}` | `+ 1`, `+ 2` |
+| `receive_round_1 → receive_round_2` | `{0}` | `{0}` | None |
+
+Each OLD side closed in three TLC runs (**135 generated, 135 distinct, 0 queued** in the final pass), and changed NEW closed in five (**279 generated, 237 distinct, 0 queued**). The witnesses take three original transitions for the first history and seven for the second, excluding `init`. Repeating the comparison with both saved working-tree sources invalid reproduced the same bindings, outcomes and witnesses. There was no original transition bound, but these results are exhaustive only for this instance, these histories, and this observation. They don't establish state equality after round two or a consensus property.
+
+### Independent checks and reproduction
+
+[`projection_oracle.py`](../experiments/consensus/projection_oracle.py) independently loads and compiles the original `q_init` and `q_step`. It checks the full original and tagged graphs, without the history filter. Erasing the tag preserves the initial and reachable state sets and the outgoing projected edges from **each** reachable tagged state. The oracle independently identifies receive edges by native stage and round and checks every tag. Both graphs have nine initial states, no queued states, and search depth nine including `init`:
+
+| Revision | Native generated / distinct / unique edges | Tagged generated / distinct / unique edges |
+| --- | --- | --- |
+| OLD | 171 / 153 / 162 | 171 / 153 / 162 |
+| NEW | 339 / 267 / 330 | 339 / 267 / 330 |
+
+The oracle independently derives the same two outcome sets from native reachability. It replays four self-comparison and six changed-comparison witnesses by matching each entire seven-variable initial state and each full consecutive state pair in the closed native graph. This requires an original `q_init` state and an original `q_step` edge at every frame, not just compatible observations. It rejects a witness that changes an initial proposal at a later frame, even if its labels and final omission count are unchanged. A wrong tag that hides the receive preserves the native graph but fails the tag check. A separate control loses an edge only from one tagged state and demonstrates why checking just the union of projected edges isn't enough. The two implementations were cross-reviewed.
+
+```sh
+# In nix develop: Quint 0.33.1 and Apalache 0.62.4/TLC.
+export CONSENSUS_CHECKOUT=/path/to/quint-repo
+scratch=$(mktemp -d)
+driver=experiments/consensus/source_actions.py
+oracle=experiments/consensus/projection_oracle.py
+python3 -B "$driver" compare "$CONSENSUS_CHECKOUT" --self --json > "$scratch/self.json"
+python3 -B "$driver" compare "$CONSENSUS_CHECKOUT" --json > "$scratch/comparison.json"
+for side in old new; do
+  python3 -B "$driver" stage "$CONSENSUS_CHECKOUT" "$side" "$scratch/$side"
+  python3 -B "$oracle" "$CONSENSUS_CHECKOUT" "$side" "$scratch/$side" --report "$scratch/comparison.json"
+done
+python3 -B "$oracle" "$CONSENSUS_CHECKOUT" old "$scratch/old" --report "$scratch/self.json"
+python3 -B -m unittest discover -s experiments/consensus -p test_source_actions.py -v
+python3 -B -m unittest discover -s experiments/consensus -p test_projection_oracle.py -v
+```
+
+The experiment does not establish support for arbitrary Quint `match`, `any`, or local bindings. It uses the parser and compiler from one pinned version, and the checker and oracle support only this fixed instance. The production CLI is unchanged.
+
+## Next experiment: source bindings under nondeterministic arguments
+
+**Question:** Can a source binding identify which requests an existing scheduler issued when a selected call's arguments come from local `nondet` bindings, without reimplementing the scheduler or reading an event report to identify the call?
+
+Revisit Experiment 3's DML revisions. Select the original `stage` and `publish` sites through their `any` branches and local bindings, not by post-state receipt or event fields. Preserve the report-free scheduling choices, and explicitly map OLD's single publish signature to the two reviewed factor requests. First reproduce the two OLD self outcomes `{0, 12}` per history; then require only `− 12` for factor `3`, with both outcomes retained for factor `−2`. Check the source-based results against the existing native DML evidence and measure the cost of validating erasure on that much larger graph. Use that result to decide whether argument binding belongs in the first fresh implementation or whether those scheduler shapes should initially report `incomplete`.
