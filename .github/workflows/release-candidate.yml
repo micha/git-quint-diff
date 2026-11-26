@@ -56,7 +56,7 @@ jobs:
           python3 -m pip install 'pipx==1.16.6'
           cd "$RUNNER_TEMP/quint-diff-dist"
           PIP_NO_INDEX=1 python3 -m pipx install --skip-maintenance ./*.whl
-          shasum -a 256 -- *.whl *.tar.gz > SHA256SUMS
+          shasum -a 256 -- *.whl *.tar.gz *.tar > SHA256SUMS
 
       - name: Run development-only fault injection and projection checks
         if: runner.os == 'Linux'

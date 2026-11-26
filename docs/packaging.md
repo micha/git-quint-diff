@@ -21,6 +21,8 @@ export PIPX_HOME="$scratch/pipx" PIPX_BIN_DIR="$scratch/pipx-bin"
 PIP_NO_INDEX=1 pipx install --skip-maintenance "$scratch"/dist/*.whl
 ```
 
+Build into a fresh output directory to avoid mixing artifacts from different candidates. The TLA+ Tools companion is a source-only `.tar` pinned to the revision that reproduces the embedded TLC; see the [rebuild recipe](../packaging/TLC-SOURCE.md). The wheel and companions are candidate artifacts, not cleared for redistribution.
+
 Once installed, put the selected `bin` directory on `PATH` and run `git quint-diff --review review.json OLD NEW` in a model repository. `git-quint-diff --help` prints usage. See [review syntax, JSON v1, and exit statuses](source-review.md).
 
 ## Run the installed acceptance gate

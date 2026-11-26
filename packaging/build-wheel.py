@@ -21,6 +21,8 @@ from urllib.parse import quote, urlsplit
 from urllib.request import urlopen
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
+import tlc_source
+
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -180,12 +182,19 @@ def stage(scratch, cache, target, pins):
                   apalache["sha256"]), scratch)
     apalache_home = payload / "quint-home" / f"apalache-dist-{version}" / "apalache"
     (apalache_home / "lib").mkdir(parents=True)
+    backend = apalache_home / "lib" / "apalache.jar"
     subprocess.run([sys.executable, "-B", str(HERE / "repack-backend.py"),
-                    str(scratch / "apalache" / "lib" / "apalache.jar"),
-                    str(apalache_home / "lib" / "apalache.jar")], check=True)
+                    str(scratch / "apalache" / "lib" / "apalache.jar"), str(backend)], check=True)
     shutil.copyfile(scratch / "apalache" / "LICENSE", licenses / "Apalache-LICENSE")
     sources.update({name: fetch(cache, url, digest)
                     for name, (url, digest) in sorted(pins["backend_sources"].items())})
+    tlc_pin = pins["tlc_source"]
+    upstream = fetch(cache, f"https://codeload.github.com/tlaplus/tlaplus/tar.gz/{tlc_pin['revision']}",
+                     tlc_pin["upstream_sha256"])
+    source_name = tlc_source.companion_name(tlc_pin)
+    sources[source_name] = scratch / "tlc-companion" / source_name
+    sources[source_name].parent.mkdir()
+    tlc_source.pack(upstream, sources[source_name], tlc_pin)
     for name, (url, digest) in sorted(pins["notice_files"].items()):
         shutil.copyfile(fetch(cache, url, digest), licenses / name)
     shutil.copyfile(HERE / "REDISTRIBUTION.md", licenses / "REDISTRIBUTION.md")

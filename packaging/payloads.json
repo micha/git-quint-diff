@@ -24,8 +24,12 @@
     "sha256": "8ac8488422c30d552735bae11b92a2d014d8e02e8608702acc08f9a2d8a9abb2"
   },
   "backend_sources": {
-    "apalache-0.62.4-source.tar.gz": ["https://codeload.github.com/apalache-mc/apalache/tar.gz/refs/tags/v0.62.4", "ba75d76c939c76512d246771b5610a105f8c46f346087c6ecd966bd71af3d370"],
-    "tlaplus-1.8.0-source.tar.gz": ["https://codeload.github.com/tlaplus/tlaplus/tar.gz/refs/tags/v1.8.0", "2d54e9c448e85d228f23dac96592bc84e20ed66b85273d850ffb7794bf646197"]
+    "apalache-0.62.4-source.tar.gz": ["https://codeload.github.com/apalache-mc/apalache/tar.gz/refs/tags/v0.62.4", "ba75d76c939c76512d246771b5610a105f8c46f346087c6ecd966bd71af3d370"]
+  },
+  "tlc_source": {
+    "revision": "94d0c5070852b37b801bb8998c436383ab7ee37b",
+    "upstream_sha256": "aaa632e07322f2c3f5923bf9f691b963f261d2f59bba271b4012539ce3d1271d",
+    "companion_sha256": "01a19bf1e82ffcb768371bcae287ce87bd2cad8fa0cdcad5d9e372c4c3a862ca"
   },
   "notice_files": {
     "Apalache-NOTICE": ["https://raw.githubusercontent.com/apalache-mc/apalache/v0.62.4/NOTICE", "787ac7de707fb7d6761946b8005153a03600f3187ee541dd12516872a7b96b79"],

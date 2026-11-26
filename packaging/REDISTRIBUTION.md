@@ -1,13 +1,16 @@
 # Wheel payload and source companions
 
+Links to project files are relative to the source repository (see the wheel's
+`Project-URL: Source`). This candidate is not a public source offer.
+
 The candidate wheel needs only Python and Git at runtime. It includes a release
 build of Node.js (binary and its cumulative license), the published npm build
 of Quint and its exact production lock dependencies, a trimmed Apalache JAR
 (including TLC), and a headless `jlink` image built with the matching Eclipse
 Temurin 21 JDK. The input versions and archive digests are in `payloads.json`
-in the wheel's `.dist-info` directory. License and notice files supplied in
-bundled npm packages or in the retained JAR entries are copied. The wheel also
-contains the upstream Node.js, Quint, Apalache and OpenJDK license texts,
+in the wheel's `.dist-info` directory. Existing notices in the npm tarballs
+and surviving JAR members remain in those payloads. The wheel separately
+includes the upstream Node.js, Quint, Apalache and OpenJDK license texts,
 OpenJDK module notices, and separately fetched upstream notices listed in
 `payloads.json`.
 
@@ -24,34 +27,32 @@ JDK release metadata. Keep both files with the matching wheel(s); do not offer a
 binary wheel for download without making the matching source materials
 available under the applicable terms (OpenJDK: GPL v2 with Classpath Exception).
 `build-wheel.py` specifies the `jlink` command used to assemble the image.
-The build also emits the pinned Apalache 0.62.4 source and a TLA+ Tools
-source archive for investigation. **That TLA+ Tools archive is not verified
-corresponding source.** Apalache 0.62.4 was released on 2026-10-12; its
-build declares TLC `v1.8.0`, but the asset now at that URL was built on
-2026-11-26 (`X-Git-Revision: 1138302995a41cc5649c0321992e4146d8ff06e2`)
-and has different `tlc2/TLC.class` code. Use the independently matched
-[October source revision](https://github.com/tlaplus/tlaplus/tree/94d0c5070852b37b801bb8998c436383ab7ee37b)
-to prepare a replacement companion. The raw source tarballs contain
-third-party binary files; audit what is redistributed and document the
-inputs needed to rebuild.
+The build emits the pinned Apalache 0.62.4 source and a filtered, matched
+[TLA+ Tools source companion](TLC-SOURCE.md) from commit `94d0c5070852`. The
+companion replaces the investigative `v1.8.0` archive and omits the raw
+Tools archive's third-party JARs. Keep the rebuild recipe and repack script
+with these materials. Review the Apalache and Temurin archives independently;
+matching a source revision is not approval to distribute every file in it.
 
-TLC's EPL-2.0 notice is `META-INF/LICENSE_tla2tools.md` in the JAR, not the
-separate `License_tla2tools.txt` for Microsoft material. Keep the repack script
-available with the release sources.
+TLC's own source is MIT. `META-INF/LICENSE_tla2tools.md` in the merged JAR
+is **Jakarta Mail's EPL-2.0 text**, copied into the upstream TLC build from
+`mailapi-1.6.8.jar`. The separately preserved `License_tla2tools.txt` is the
+Microsoft MIT text. Keep the upstream Apalache NOTICE verbatim and preserve
+separate attributions and license terms for the code it includes.
 
 ## Publication hold
 
 The wheel includes the project's [MIT license](../LICENSE) for its own code
 and documentation; that license does not apply to bundled components. The
-solver exclusions and source companions are not a complete redistribution
-audit. In particular, the fat JAR still contains other JVM packages that
-must be inventoried and matched with notices and, where the chosen license
-requires it, corresponding source. Examples to resolve include Logback
-1.5.32 and Jetty 12.1.10 (including its Servlet dependencies); the merged
-JAR does not supply separately identified notices for them. Also verify the
-Node.js and linked JDK payloads and the production npm package inventory on
-the artifacts to be published. Do not upload a wheel, JAR, or Nix closure to
-a public download or binary cache until these checks are cleared.
+[backend inventory](../docs/jvm-redistribution-audit.md) identifies the
+classes and supplying artifacts, not complete redistribution coverage.
+Restore missing notices (including for shaded components), provide the
+exact corresponding sources required by EPL/MPL and their availability
+instructions, and audit the retained resources and release companions.
+The [wheel payload audit](../docs/wheel-payload-audit.md) records local
+Node.js, npm and Temurin checks and the remaining host and closure work.
+Do not upload a wheel, JAR, source companion, or Nix closure to a public
+download or binary cache until these checks are cleared.
 
 ## Build
 
