@@ -1,6 +1,10 @@
 # Agent guide
 
-Read [README.md](README.md) for the proposed CLI and approval example. This repository owns snapshot loading, model exploration, comparison, and terminal/JSON output. It does not depend on Neovim or on a checkout of `nvim-quint-viewer`. Do not implement editor integration here. No implementation language or public configuration format has been selected yet.
+Read [README.md](README.md) for the proposed CLI and approval example. This repository owns snapshot loading, model exploration, comparison, and terminal/JSON output. It does not depend on Neovim or on a checkout of `nvim-quint-viewer`. Do not implement editor integration here. No implementation language or public configuration format has been selected for the eventual fresh implementation.
+
+## Design spiral
+
+This repository is an experimental prototype. Start each iteration with a design question, gather evidence from actual Quint models and Git reviews, and record what the evidence supports and what remains open in [docs/design-spiral.md](docs/design-spiral.md). Add prototype code only when it helps answer a question. Do not preserve interfaces or internals for their own sake; the plan is to archive this work and start the production implementation from scratch.
 
 ## Comparison contract
 
@@ -9,7 +13,7 @@ Read [README.md](README.md) for the proposed CLI and approval example. This repo
 - A missing action, a declared action that cannot take a step, and an observed denial are distinct. Report absence of a matching execution only when the search supports it. Never turn an evaluation failure, unsupported model, or incomplete search into an empty outcome set.
 - Use deterministic traversal and stable witness ordering, with shortest histories first. Do not use LLMs anywhere in the CLI or use random simulation for comparison. Expose the observation and search scope in both terminal and JSON output; distinguish exhaustive, bounded, and incomplete results. Report factual additions and removals, with no `Findings` column. JSON will be a versioned interface, not a serialization of display strings.
 
-## Start here: Quint first
+## Baseline: Quint first
 
 1. Specify the comparison before writing the CLI. Start with a finite approval model in which OLD can approve after `obtain_ticket` and NEW requires `obtain_training` too. Model the expected removed and added witnesses and verify the rules with Quint/TLC in the pinned `nix develop` shell. Record the checked state space and bounds. Include a nondeterministic model compared with itself and a case where one of two possible outcomes is removed.
 2. Implement the smallest standalone `git-quint-diff` CLI that can exercise those cases on real Git snapshots. Replay histories against the real command, check the witness content and scope against the model, and include a negative control (for example, a false difference made by picking one outcome per side).

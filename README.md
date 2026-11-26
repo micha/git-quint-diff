@@ -2,7 +2,7 @@
 
 Review what a change to a [Quint](https://quint.sh/) specification **adds or removes from its behavior**, not just what changed in the source. This is a standalone CLI project for terminal and CI use. A future `:QuintDiff` in [nvim-quint-viewer](https://github.com/micha/nvim-quint-viewer) can consume the same results.
 
-**Status: bounded CLI prototype.** It compares two committed Git snapshots using a finite Quint review adapter. Index, working-tree, and merge-base comparisons are not implemented.
+**Status: design spiral, not the production implementation.** This bounded prototype compares two committed Git snapshots using a finite Quint review adapter. We are using it to learn from real reviews before archiving this work and starting a fresh implementation. Prototype flags, adapters, and JSON are not commitments for that implementation. See the [experiment log and next questions](docs/design-spiral.md).
 
 ## What a review looks like
 
