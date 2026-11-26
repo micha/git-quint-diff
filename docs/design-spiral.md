@@ -164,4 +164,12 @@ This was a **collaborator dry run**, not an outside-user session or a cold-store
 
 The [forwardable handoff](outside-trial.md) fixes the candidate to `158ec18df0242c68995975fde4f06f8361060df5`, records the source archive digest, and asks for the host, elapsed time, and first replay or concrete blocker. The archive carries the tested guide and review; the handoff instructions are separate. Both collaborators independently verified the archive digest and ran the guide from extracted copies on Linux arm64 with existing Nix stores. The clean-config run needed the declared `nix-command` and `flakes` features enabled. Both reproduced a replay failure with spaces in `TMPDIR` and successful replay with `/tmp`. The handoff documents these prerequisites without changing the candidate. No outside participant has reported a result yet.
 
-The next milestone is one unaided outside run. If the participant reaches replay, try a change in their own Quint model next. If they cannot reach replay, fix or document the first blocker and repeat the trial. Public wheels and project binary caches remain on hold; revisit source-first packaging only if installation is the blocker.
+No outside participant is available, so that trial is deferred. Public wheels and project binary caches remain on hold.
+
+## One-command demo and a second upstream change
+
+**Question:** Can a first try show a real behavioral change without fetching a model, setting up a profile, or writing a review file?
+
+`nix run .#demo` runs the installed command on the exact offline consensus fixture in a temporary repository. The default package does not carry the demo. Both collaborators ran it offline from unpacked source with build inputs already present: round one added `1` and `2`, and the two-receive history was unchanged. It removed its scratch directory; the default package derivation matched `158ec18`.
+
+Separately, both collaborators wrote or checked a new review of upstream `6c76880b5ddc11de201acaa7f54a393799d15af6` → `e0a028017bdf60340178748ed11f62a89a7887bc`. In the same constants instance as the receive demo, observe `Procs.map(p => procState.get(p).x).size()` at initialization and after the first send, hiding only the round's crash branch. OLD assigns two distinct proposals; NEW allows the slots to start with the same proposal. Both histories closed at `{2}` → `{1,2}`. Independent checks against the original scheduler replayed both additions and confirmed the sets; the native graphs had 33 / 488 reachable states. This is proposal diversity in that instance, not a claim about consensus decisions.

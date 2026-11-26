@@ -4,16 +4,21 @@ Review what two commits **add or remove from a Quint model's behavior**, not jus
 
 **Status:** Pre-release. The source-bound runtime supports imported, nested schedulers and pre-state label predicates. It has been checked on the [upstream Quint consensus pair](docs/first-release-acceptance.md#2-imported-consensus-scheduler). The pure-adapter prototype and seven design experiments are archived at `prototype-handoff` (`064f97d`).
 
-## Install
-
-Both packages use **Git 2.43 or newer** from your `PATH`. You do not need to install Node.js, Java, or Quint separately.
-
-- **Nix:** From a supplied candidate checkout or unpacked source archive, follow the [source-first trial](docs/source-trial.md) to install in a disposable profile. No archived tag is needed.
-- **pipx:** A matching wheel can be built and installed locally; see [packaging and installed acceptance](docs/packaging.md). Public wheels are on hold.
-
 ## Try it
 
-The [source-first trial](docs/source-trial.md#2-review-two-real-quint-commits) compares two real upstream Quint commits. It shows how to fetch them, use the [ready-made review](docs/consensus-review.json), and replay the producing witnesses independently. The first receive adds outcomes `1` and `2`; the two-receive history has no delta. These values count process slots with a no-delivery marker, not consensus decisions.
+From a candidate checkout or unpacked source archive, with Nix flakes enabled:
+
+```sh
+nix run .#demo
+```
+
+This runs the packaged command on a temporary fixture made from two real upstream Quint commits. No permanent install, model checkout, or model fetch is needed. Nix may download build inputs on first use. Look for `+ 1` and `+ 2` after the first receive and no change after two receives. These are counts of process slots with a no-delivery marker, not consensus decisions.
+
+## Install
+
+To keep the command, run `nix profile add .` (Nix 2.30+) from the candidate source. For a local wheel instead, see [packaging](docs/packaging.md); public wheels are on hold. Both installed packages use **Git 2.43 or newer** from your `PATH`; neither needs a separate Node.js, Java, or Quint install.
+
+The [full walkthrough](docs/source-trial.md) covers the [review file](docs/consensus-review.json) and independent witness replay if you want to check how the demo works.
 
 The tool reads only committed Git objects, including transitive imports. It reports exhaustive closure **only for the selected histories**; neither a failed binding nor an unfinished search is an empty outcome set. See [review syntax and current limits](docs/source-review.md), the [scheduler contract](docs/supported-scheduler.md), and the [acceptance plan](docs/first-release-acceptance.md).
 

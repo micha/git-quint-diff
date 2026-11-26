@@ -3,7 +3,7 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
-  outputs = { nixpkgs, ... }:
+  outputs = { self, nixpkgs, ... }:
     let
       eachSystem = nixpkgs.lib.genAttrs [
         "x86_64-linux"
@@ -125,6 +125,33 @@
               license = pkgs.lib.licenses.mit;
               mainProgram = "git-quint-diff";
             };
+          };
+        });
+      apps = eachSystem (system:
+        let
+          inherit (tools.${system}) pkgs;
+          demoSource = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              ./docs/consensus-review.json
+              ./release-tests/demo-consensus.py
+              ./release-tests/consensus_fixture.py
+              ./release-tests/fixtures/consensus
+            ];
+          };
+          demo = pkgs.writeShellApplication {
+            name = "git-quint-diff-demo";
+            runtimeInputs = [ pkgs.git pkgs.python3 ];
+            text = ''
+              exec python3 -B ${demoSource}/release-tests/demo-consensus.py \
+                ${self.packages.${system}.default}/bin/git-quint-diff
+            '';
+          };
+        in {
+          demo = {
+            type = "app";
+            program = "${demo}/bin/git-quint-diff-demo";
+            meta.description = "Review the bundled upstream Quint consensus example";
           };
         });
       devShells = eachSystem (system:
