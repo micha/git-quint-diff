@@ -1,4 +1,4 @@
-# Wheel payload and source companions
+# Candidate payloads and source companions
 
 Links to project files are relative to the source repository (see the wheel's
 `Project-URL: Source`). This candidate is not a public source offer.
@@ -37,8 +37,15 @@ matching a source revision is not approval to distribute every file in it.
 TLC's own source is MIT. `META-INF/LICENSE_tla2tools.md` in the merged JAR
 is **Jakarta Mail's EPL-2.0 text**, copied into the upstream TLC build from
 `mailapi-1.6.8.jar`. The separately preserved `License_tla2tools.txt` is the
-Microsoft MIT text. Keep the upstream Apalache NOTICE verbatim and preserve
-separate attributions and license terms for the code it includes.
+Microsoft MIT text. Both packages preserve the upstream Apalache NOTICE
+verbatim and install a separate [JVM notice and source guide](jvm-legal/JVM-SOURCES.md)
+as `jvm/JVM-SOURCES.md` under the package's license directory. This bundle
+restores pinned notices for Logback, Servlet, Mail, LSP4J, Kiama, Jetty,
+Orbit Activation, TLC, and selected other components. Both builds can
+produce the same `jvm-priority-sources.tar` for the selected
+EPL/MPL dependencies, with exact input links and release-availability
+instructions in the installed guide. The Nix companion is a separate
+build target, not a dependency of the installed command.
 
 ## Publication hold
 
@@ -46,10 +53,12 @@ The wheel includes the project's [MIT license](../LICENSE) for its own code
 and documentation; that license does not apply to bundled components. The
 [backend inventory](../docs/jvm-redistribution-audit.md) identifies the
 classes and supplying artifacts, not complete redistribution coverage.
-Restore missing notices (including for shaded components), provide the
-exact corresponding sources required by EPL/MPL and their availability
-instructions, and audit the retained resources and release companions.
-The [wheel payload audit](../docs/wheel-payload-audit.md) records local
+Complete the remaining notice and corresponding-source checks for
+retained resources, shaded components, and release companions. Confirm the
+conflicting source-tree and artifact notices for LSP4J before redistributing
+that bundle, and make the pinned companions available with the matching
+binaries before any public distribution. The
+[wheel payload audit](../docs/wheel-payload-audit.md) records local
 Node.js, npm and Temurin checks and the remaining host and closure work.
 Do not upload a wheel, JAR, source companion, or Nix closure to a public
 download or binary cache until these checks are cleared.

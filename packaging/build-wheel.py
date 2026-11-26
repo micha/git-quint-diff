@@ -21,6 +21,7 @@ from urllib.parse import quote, urlsplit
 from urllib.request import urlopen
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
+import jvm_legal
 import tlc_source
 
 
@@ -192,9 +193,16 @@ def stage(scratch, cache, target, pins):
     upstream = fetch(cache, f"https://codeload.github.com/tlaplus/tlaplus/tar.gz/{tlc_pin['revision']}",
                      tlc_pin["upstream_sha256"])
     source_name = tlc_source.companion_name(tlc_pin)
-    sources[source_name] = scratch / "tlc-companion" / source_name
-    sources[source_name].parent.mkdir()
+    generated = scratch / "generated-sources"
+    generated.mkdir()
+    sources[source_name] = generated / source_name
     tlc_source.pack(upstream, sources[source_name], tlc_pin)
+    source_pin = jvm_legal.pin_file("sources.json")
+    source_name = source_pin["companion"]["file"]
+    sources[source_name] = generated / source_name
+    jvm_legal.pack({name: fetch(cache, item["url"], item["sha256"])
+                    for name, item in source_pin["inputs"].items()}, sources[source_name], source_pin)
+    jvm_legal.install(licenses / "jvm")
     for name, (url, digest) in sorted(pins["notice_files"].items()):
         shutil.copyfile(fetch(cache, url, digest), licenses / name)
     shutil.copyfile(HERE / "REDISTRIBUTION.md", licenses / "REDISTRIBUTION.md")

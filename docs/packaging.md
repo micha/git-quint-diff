@@ -21,7 +21,7 @@ export PIPX_HOME="$scratch/pipx" PIPX_BIN_DIR="$scratch/pipx-bin"
 PIP_NO_INDEX=1 pipx install --skip-maintenance "$scratch"/dist/*.whl
 ```
 
-Build into a fresh output directory to avoid mixing artifacts from different candidates. The TLA+ Tools companion is a source-only `.tar` pinned to the revision that reproduces the embedded TLC; see the [rebuild recipe](../packaging/TLC-SOURCE.md). The wheel and companions are candidate artifacts, not cleared for redistribution.
+Build into a fresh output directory to avoid mixing artifacts from different candidates. The TLA+ Tools companion is a source-only `.tar` pinned to the revision that reproduces the embedded TLC; see the [rebuild recipe](../packaging/TLC-SOURCE.md). Wheel builds also emit `jvm-priority-sources.tar`. Obtain the identical archive from the flake with `nix build .#jvm-source-companions --out-link "$scratch/jvm-sources"`. Both packages include the [JVM notice and source guide](../packaging/jvm-legal/JVM-SOURCES.md), which locates and identifies the matching sources. The wheel and companions are candidate artifacts, not cleared for redistribution.
 
 Once installed, put the selected `bin` directory on `PATH` and run `git quint-diff --review review.json OLD NEW` in a model repository. `git-quint-diff --help` prints usage. See [review syntax, JSON v1, and exit statuses](source-review.md).
 
@@ -41,4 +41,4 @@ for bin in "$scratch/profile/bin" "$PIPX_BIN_DIR"; do
 done
 ```
 
-CI runs this gate on both target hosts, including for pushes to `rc-validation/**`. It saves the SHA-256 manifest, not the binaries or a GitHub Release. The project's [MIT license](../LICENSE) is included in both packages. Before publishing an RC, require both native jobs to pass on the exact commit to be tagged and clear the [bundled dependency redistribution checks](../packaging/REDISTRIBUTION.md). Any rebuilt wheel and source companions must match the tested manifest or be validated as new artifacts. Keep the prototype archive and test fixtures out of the shipped runtime.
+CI runs this gate on both target hosts, including for pushes to `rc-validation/**`. It also checks the JVM notice files in both installations and the wheel ZIP and verifies both builds' source-companion digest. CI saves the SHA-256 manifest, not the binaries or a GitHub Release. The project's [MIT license](../LICENSE) is included in both packages. Before publishing an RC, require both native jobs to pass on the exact commit to be tagged and clear the [bundled dependency redistribution checks](../packaging/REDISTRIBUTION.md). Any rebuilt wheel and source companions must match the tested manifest or be validated as new artifacts. Keep the prototype archive and test fixtures out of the shipped runtime.

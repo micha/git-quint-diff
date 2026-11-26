@@ -13,6 +13,13 @@ confirms this and, in several cases, did not preserve the supplying notices.
 **Keep the publication hold.** This is technical evidence and proposed
 release work, not a finding that any package can be published as-is.
 
+**Update after `0cbf05c`:** Both install forms now carry the pinned
+[JVM notices and source instructions](../packaging/jvm-legal/JVM-SOURCES.md).
+The wheel and separate Nix source build produce the same source-only
+companion for the five priority dependencies below. The audit table
+records why each was selected, not a claim that the remaining payload
+is cleared. The LSP4J declarations are preserved, not resolved.
+
 ## What the class comparison proves
 
 - The JAR has 29,849 non-directory entries: 29,531 `.class` files and 318
@@ -110,18 +117,19 @@ checks before publishing to a public binary cache as well as to a wheel host.
   rebuilding this exact composition requires the matched TLC and the
   exact resolved inputs. Audit its non-code assets (logos, screenshots,
   included ADR PDF) before distributing all of it.
-- **Additional notices:** the retained JAR preserves multiple upstream
-  Commons, Jackson, SLF4J, Scala, Scalaz, Checker Qual, Jakarta Inject,
-  Commons Math and JLine notices. Compare them against exact upstream
-  bytes before declaring coverage. Major remaining gaps include Netty
-  (11 Maven modules at 4.1.110.Final), gRPC/Google protobuf and common
-  protos, Gson's two source versions, uPickle and Geny (MIT), and shaded
-  components (e.g. BooPickle in Izumi, JCTools inside Netty). Netty's
-  upstream `NOTICE.txt` points to component license files under
-  `license/`; copying just its Apache text or just that notice is not a
-  replacement. For wheel/Nix parity, package restored notices in both
-  install forms, and verify them from each produced artifact rather than
-  assuming generic JAR notice names identify every dependency.
+- **Additional notices:** both installs now carry the upstream Netty
+  4.1.110.Final umbrella license and notice plus its 30 related legal
+  files (including JCTools); these cover an aggregate distribution and
+  do not imply every referenced dependency is retained. They also carry
+  gRPC-Java's common license and notice for the three retained versions,
+  the two Gson licenses, two protobuf licenses, and the separate
+  uPickle and Geny licenses. See [the pinned manifest](../packaging/jvm-legal/notices.json).
+  Still map retained resources and shaded code (e.g. BooPickle in Izumi,
+  the particular JCTools subset in Netty, and Google common protos) to
+  their exact supplying notices and sources. Compare surviving Commons,
+  Jackson, SLF4J, Scala, Scalaz, Checker Qual, Jakarta Inject, Commons
+  Math and JLine notices against their exact upstream bytes before
+  declaring coverage.
 
 ### Source and notice pins
 

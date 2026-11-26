@@ -58,6 +58,16 @@ jobs:
           PIP_NO_INDEX=1 python3 -m pipx install --skip-maintenance ./*.whl
           shasum -a 256 -- *.whl *.tar.gz *.tar > SHA256SUMS
 
+      - name: Verify JVM notices and source companions for both packages
+        run: |
+          nix build .#jvm-source-companions --out-link "$RUNNER_TEMP/quint-diff-jvm-sources"
+          python3 -B release-tests/check-jvm-legal.py \
+            --nix-profile "$RUNNER_TEMP/quint-diff-profile" \
+            --pipx-python "$RUNNER_TEMP/quint-diff-pipx/venvs/git-quint-diff/bin/python" \
+            --wheel "$RUNNER_TEMP/quint-diff-dist/"*.whl \
+            --nix-sources "$RUNNER_TEMP/quint-diff-jvm-sources" \
+            --wheel-sources "$RUNNER_TEMP/quint-diff-dist"
+
       - name: Run development-only fault injection and projection checks
         if: runner.os == 'Linux'
         env:

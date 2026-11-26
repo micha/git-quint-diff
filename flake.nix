@@ -48,12 +48,33 @@
           '';
           quintPackage = "${quint}/lib/node_modules/@informalsystems/quint";
         in {
-          inherit pkgs quint quintPackage apalacheCache apalacheRuntime;
+          inherit pkgs quint quintPackage apalacheCache apalacheRuntime apalacheVersion;
         });
     in {
       packages = eachSystem (system:
-        let inherit (tools.${system}) pkgs quintPackage apalacheRuntime;
+        let
+          inherit (tools.${system}) pkgs quintPackage apalacheCache apalacheRuntime apalacheVersion;
+          payloads = builtins.fromJSON (builtins.readFile ./packaging/payloads.json);
+          apalacheNotice = pkgs.fetchurl {
+            url = builtins.elemAt payloads.notice_files.Apalache-NOTICE 0;
+            sha256 = builtins.elemAt payloads.notice_files.Apalache-NOTICE 1;
+          };
+          jvmLegal = pkgs.lib.fileset.toSource {
+            root = ./packaging;
+            fileset = pkgs.lib.fileset.unions [ ./packaging/jvm_legal.py ./packaging/jvm-legal ];
+          };
+          jvmSources = builtins.fromJSON (builtins.readFile ./packaging/jvm-legal/sources.json);
+          sourceInputs = pkgs.linkFarm "git-quint-diff-jvm-source-inputs"
+            (pkgs.lib.mapAttrsToList (name: pin: {
+              inherit name;
+              path = pkgs.fetchurl { inherit (pin) url sha256; };
+            }) jvmSources.inputs);
         in {
+          # Build the same recipient source companion as the wheel, not a runtime dependency.
+          jvm-source-companions = pkgs.runCommand "git-quint-diff-jvm-source-companions"
+            { nativeBuildInputs = [ pkgs.python3 ]; } ''
+              python3 -B ${jvmLegal}/jvm_legal.py pack ${sourceInputs} "$out"
+            '';
           default = pkgs.stdenvNoCC.mkDerivation {
             pname = "git-quint-diff";
             version = "0.1.0-rc1";
@@ -61,12 +82,17 @@
               root = ./.;
               fileset = pkgs.lib.fileset.unions [ ./LICENSE ./git-quint-diff ./runtime ];
             };
-            nativeBuildInputs = [ pkgs.makeWrapper ];
+            nativeBuildInputs = [ pkgs.makeWrapper pkgs.python3 ];
             dontBuild = true;
             installPhase = ''
               runHook preInstall
               install -Dm644 git-quint-diff "$out/libexec/git-quint-diff/git-quint-diff"
-              install -Dm644 LICENSE "$out/share/licenses/git-quint-diff/LICENSE"
+              legal="$out/share/licenses/git-quint-diff"
+              install -Dm644 LICENSE "$legal/LICENSE"
+              apalache=${apalacheCache}/apalache-dist-${apalacheVersion}/apalache
+              install -m644 "$apalache/LICENSE" "$legal/Apalache-LICENSE"
+              install -m644 ${apalacheNotice} "$legal/Apalache-NOTICE"
+              python3 -B ${jvmLegal}/jvm_legal.py install "$legal/jvm"
               cp -r runtime "$out/libexec/git-quint-diff/"
               makeWrapper ${pkgs.nodejs}/bin/node "$out/bin/git-quint-diff" \
                 --add-flags "$out/libexec/git-quint-diff/git-quint-diff" \

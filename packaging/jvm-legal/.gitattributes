@@ -1,0 +1,4 @@
+# Upstream legal files are stored verbatim, including line endings and whitespace.
+notices/** -text -whitespace
+# Geny's verbatim license uses a seven-character Markdown underline.
+notices/geny-1.1.1/LICENSE conflict-marker-size=32

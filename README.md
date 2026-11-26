@@ -43,4 +43,4 @@ The harness runs the executable on disposable Git repositories, including offlin
 
 ## License
 
-The project's own code and documentation are under the [MIT License](LICENSE). Vendored fixtures and runtime dependencies retain their own terms; see the [consensus fixture license](release-tests/fixtures/consensus/LICENSE) and [wheel redistribution notes](packaging/REDISTRIBUTION.md).
+The project's own code and documentation are under the [MIT License](LICENSE). Vendored fixtures and runtime dependencies retain their own terms; see the [consensus fixture license](release-tests/fixtures/consensus/LICENSE) and [candidate redistribution notes](packaging/REDISTRIBUTION.md).

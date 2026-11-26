@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "companion": {
+    "file": "jvm-priority-sources.tar",
+    "sha256": "2145fed8f79cfaba9331d3b80adb2c11e2d7062865ebd0fa2b5407555ccced9e"
+  },
+  "inputs": {
+    "jakarta.servlet-api-6.0.0-sources.jar": {
+      "url": "https://repo.maven.apache.org/maven2/jakarta/servlet/jakarta.servlet-api/6.0.0/jakarta.servlet-api-6.0.0-sources.jar",
+      "sha256": "3dc226f976152a4bf78a2b7ee0c67ba0e61029f1ba6f439767d7c5c7afaeef9d"
+    },
+    "kiama-2.5.1-upstream.tar.gz": {
+      "url": "https://codeload.github.com/inkytonik/kiama/tar.gz/61750c32ccd51eee31271a78713fd94809a61928",
+      "sha256": "dcc820df11f98ba5e79f6d210919d5232347b998dbbec5c3ad9a2687890ed9de"
+    },
+    "kiama_2.13-2.5.1-sources.jar": {
+      "url": "https://repo.maven.apache.org/maven2/org/bitbucket/inkytonik/kiama/kiama_2.13/2.5.1/kiama_2.13-2.5.1-sources.jar",
+      "sha256": "9fe302c2d61dc9cca95aaa596abc0da192b8521a546f05d47aaf0ee2361a8622"
+    },
+    "logback-1.5.32-upstream.tar.gz": {
+      "url": "https://codeload.github.com/qos-ch/logback/tar.gz/e807335a67535b4eacce94e942c0bcb649665d93",
+      "sha256": "2f0a609dd8b5c2073fdf2596c5d070a1ec4e926b91255dfda1fb5092d0267e0c"
+    },
+    "logback-classic-1.5.32-sources.jar": {
+      "url": "https://repo.maven.apache.org/maven2/ch/qos/logback/logback-classic/1.5.32/logback-classic-1.5.32-sources.jar",
+      "sha256": "be553204e18ce1f628c535bb063a1e611182854d15154382b00afd4968ce591f"
+    },
+    "logback-core-1.5.32-sources.jar": {
+      "url": "https://repo.maven.apache.org/maven2/ch/qos/logback/logback-core/1.5.32/logback-core-1.5.32-sources.jar",
+      "sha256": "a73a40370a2a086a36b626b71f16c529e54e2a75845faf08134b689c607508e1"
+    },
+    "lsp4j-0.21.1-upstream.tar.gz": {
+      "url": "https://codeload.github.com/eclipse-lsp4j/lsp4j/tar.gz/527f4c0c0c4b69e58d8e0c29c89cd64c32147f22",
+      "sha256": "d4c2e563c4943e53e6d7992b7687af59d5edf7bb61e14411dbb3c706db1d9e72"
+    },
+    "mail-1.6.8-upstream.tar.gz": {
+      "url": "https://codeload.github.com/eclipse-ee4j/mail/tar.gz/f31ae63dd08cebebf3b5066b26f471f9c916b0b2",
+      "sha256": "7b051f0e86a407622c9234ebc9eed358c3a839cc4b79df21fa76fa791b9b5b46"
+    },
+    "mailapi-1.6.8-sources.jar": {
+      "url": "https://repo.maven.apache.org/maven2/com/sun/mail/mailapi/1.6.8/mailapi-1.6.8-sources.jar",
+      "sha256": "362c15f74a7f964ae00b83c781295726cb851cda91882736f0b1f025935e6b52"
+    },
+    "org.eclipse.lsp4j.debug-0.21.1-sources.jar": {
+      "url": "https://repo.maven.apache.org/maven2/org/eclipse/lsp4j/org.eclipse.lsp4j.debug/0.21.1/org.eclipse.lsp4j.debug-0.21.1-sources.jar",
+      "sha256": "2c636a822cd66d4d211c481322ab192c15806813cdc1584a7caa920a053c1c41"
+    },
+    "org.eclipse.lsp4j.jsonrpc-0.21.1-sources.jar": {
+      "url": "https://repo.maven.apache.org/maven2/org/eclipse/lsp4j/org.eclipse.lsp4j.jsonrpc/0.21.1/org.eclipse.lsp4j.jsonrpc-0.21.1-sources.jar",
+      "sha256": "908efebcc08f8bc2e380e849b8d08623fd64f5a329e426988d694b122c057f76"
+    },
+    "org.eclipse.lsp4j.jsonrpc.debug-0.21.1-sources.jar": {
+      "url": "https://repo.maven.apache.org/maven2/org/eclipse/lsp4j/org.eclipse.lsp4j.jsonrpc.debug/0.21.1/org.eclipse.lsp4j.jsonrpc.debug-0.21.1-sources.jar",
+      "sha256": "fc8757d2090c7abad421a607795a946acf2a4db99b1833b6da94250c0066f6aa"
+    },
+    "servlet-6.0.0-upstream.tar.gz": {
+      "url": "https://codeload.github.com/jakartaee/servlet/tar.gz/63d2d7e17b91e7a8c44e21607c550cf55e5e69eb",
+      "sha256": "40e526a67d616ff27e3e9ac9fbfe9658ffd95722260af941cf08493a66a4daf4"
+    },
+    "smtp-1.6.8-sources.jar": {
+      "url": "https://repo.maven.apache.org/maven2/com/sun/mail/smtp/1.6.8/smtp-1.6.8-sources.jar",
+      "sha256": "8b334442f0b4a08e1d35e4082c28c3e136b45ab4db9af41d3d5b6b3fc467355d"
+    }
+  },
+  "projects": {
+    "kiama-2.5.1": {
+      "tree": {
+        "input": "kiama-2.5.1-upstream.tar.gz",
+        "root": "kiama-61750c32ccd51eee31271a78713fd94809a61928",
+        "files": [
+          "LICENSE",
+          "README.md",
+          "build.sbt",
+          "project/build.properties",
+          "project/plugins.sbt"
+        ],
+        "prefixes": [
+          "core/src/main/"
+        ]
+      },
+      "published": [
+        {
+          "input": "kiama_2.13-2.5.1-sources.jar",
+          "sources": 41
+        }
+      ]
+    },
+    "logback-1.5.32": {
+      "tree": {
+        "input": "logback-1.5.32-upstream.tar.gz",
+        "root": "logback-e807335a67535b4eacce94e942c0bcb649665d93",
+        "files": [
+          "LICENSE.txt",
+          "README.md",
+          "codeStyle.xml",
+          "findbugs-exclude.xml",
+          "javaConventions.xml",
+          "logback-access/pom.xml",
+          "logback-classic-blackbox/pom.xml",
+          "logback-classic-misc/pom.xml",
+          "logback-classic/LICENSE.txt",
+          "logback-classic/integration.xml",
+          "logback-classic/osgi-build.xml",
+          "logback-classic/pom.xml",
+          "logback-classic/src/IBUNDLE-META-INF/MANIFEST.MF",
+          "logback-core-blackbox/pom.xml",
+          "logback-core/LICENSE.txt",
+          "logback-core/pom.xml",
+          "logback-examples/pom.xml",
+          "pom.xml"
+        ],
+        "prefixes": [
+          "logback-classic/src/main/",
+          "logback-core/src/main/",
+          "src/main/"
+        ]
+      },
+      "published": [
+        {
+          "input": "logback-classic-1.5.32-sources.jar",
+          "sources": 170
+        },
+        {
+          "input": "logback-core-1.5.32-sources.jar",
+          "sources": 431
+        }
+      ]
+    },
+    "lsp4j-0.21.1": {
+      "tree": {
+        "input": "lsp4j-0.21.1-upstream.tar.gz",
+        "root": "lsp4j-527f4c0c0c4b69e58d8e0c29c89cd64c32147f22",
+        "files": [
+          "LICENSE",
+          "NOTICE",
+          "README.md",
+          "build.gradle",
+          "gradle/java-compiler-settings.gradle",
+          "gradle/manifest-gen.gradle",
+          "gradle/maven-deployment.gradle",
+          "gradle/versions.gradle",
+          "gradle/wrapper/gradle-wrapper.properties",
+          "gradle/xtend-compiler-settings.gradle",
+          "ide/build.gradle",
+          "org.eclipse.lsp4j.debug/build.gradle",
+          "org.eclipse.lsp4j.generator/build.gradle",
+          "org.eclipse.lsp4j.jsonrpc.debug/build.gradle",
+          "org.eclipse.lsp4j.jsonrpc/build.gradle",
+          "org.eclipse.lsp4j.websocket.jakarta/build.gradle",
+          "org.eclipse.lsp4j.websocket/build.gradle",
+          "org.eclipse.lsp4j/build.gradle",
+          "settings.gradle"
+        ],
+        "prefixes": [
+          "org.eclipse.lsp4j.debug/src/main/",
+          "org.eclipse.lsp4j.generator/src/main/",
+          "org.eclipse.lsp4j.jsonrpc.debug/src/main/",
+          "org.eclipse.lsp4j.jsonrpc/src/main/",
+          "org.eclipse.lsp4j.websocket.jakarta/src/main/",
+          "org.eclipse.lsp4j.websocket/src/main/",
+          "org.eclipse.lsp4j/src/main/"
+        ]
+      },
+      "published": [
+        {
+          "input": "org.eclipse.lsp4j.debug-0.21.1-sources.jar",
+          "sources": 148,
+          "overlays": 141,
+          "generated": {
+            "prefix": "org/eclipse/lsp4j/debug/"
+          }
+        },
+        {
+          "input": "org.eclipse.lsp4j.jsonrpc-0.21.1-sources.jar",
+          "sources": 57
+        },
+        {
+          "input": "org.eclipse.lsp4j.jsonrpc.debug-0.21.1-sources.jar",
+          "sources": 8
+        }
+      ]
+    },
+    "mail-1.6.8": {
+      "tree": {
+        "input": "mail-1.6.8-upstream.tar.gz",
+        "root": "mail-api-f31ae63dd08cebebf3b5066b26f471f9c916b0b2",
+        "files": [
+          "LICENSE.md",
+          "NOTICE.md",
+          "README.md",
+          "android/activation/pom.xml",
+          "android/mail/pom.xml",
+          "android/pom.xml",
+          "client/pom.xml",
+          "copyright-exclude",
+          "demo/pom.xml",
+          "dsn/pom.xml",
+          "gimap/pom.xml",
+          "imap/pom.xml",
+          "javadoc/pom.xml",
+          "logging/pom.xml",
+          "mail.sig",
+          "mail/exclude.xml",
+          "mail/pom.xml",
+          "mailapi/pom.xml",
+          "mailapijar/pom.xml",
+          "mailhandler/pom.xml",
+          "mbox/native/pom.xml",
+          "mbox/pom.xml",
+          "outlook/pom.xml",
+          "parent-distrib/pom.xml",
+          "pom.xml",
+          "pop3/pom.xml",
+          "publish/pom.xml",
+          "servlet/pom.xml",
+          "smtp/pom.xml",
+          "taglib/pom.xml",
+          "webapp/pom.xml"
+        ],
+        "prefixes": [
+          "mail/src/main/",
+          "mailapi/src/main/",
+          "mailapijar/src/main/",
+          "smtp/src/main/"
+        ]
+      },
+      "published": [
+        {
+          "input": "mailapi-1.6.8-sources.jar",
+          "sources": 151,
+          "overlays": 1,
+          "substitution": {
+            "member": "javax/mail/Version.java",
+            "version": "1.6.8"
+          }
+        },
+        {
+          "input": "smtp-1.6.8-sources.jar",
+          "sources": 14
+        }
+      ]
+    },
+    "servlet-6.0.0": {
+      "tree": {
+        "input": "servlet-6.0.0-upstream.tar.gz",
+        "root": "servlet-63d2d7e17b91e7a8c44e21607c550cf55e5e69eb",
+        "files": [
+          "LICENSE.md",
+          "NOTICE.md",
+          "README.md",
+          "api/pom.xml",
+          "copyright-exclude",
+          "exclude.xml",
+          "pom.xml",
+          "spec/pom.xml"
+        ],
+        "prefixes": [
+          "api/etc/",
+          "api/src/main/java/",
+          "api/src/main/resources/"
+        ],
+        "latin1": ["api/src/main/java/jakarta/servlet/LocalStrings_fr.properties"]
+      },
+      "published": [
+        {
+          "input": "jakarta.servlet-api-6.0.0-sources.jar",
+          "sources": 76
+        }
+      ]
+    }
+  }
+}
