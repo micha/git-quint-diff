@@ -1,0 +1,4 @@
+# These files are exact Git object preimages (or listings used to rebuild them).
+*.qnt -text
+*.txt -text
+LICENSE -text

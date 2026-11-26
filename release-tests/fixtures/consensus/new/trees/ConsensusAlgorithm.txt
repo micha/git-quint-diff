@@ -1,0 +1,2 @@
+100644 blob b0aed02f80f1ed062885eefd7af14201bdb48a8e	ConsensusAlg.qnt
+100644 blob 358e1a2f2ecbed871aa8e7ecf125f77ca640058a	KSetAgreementConsensus.qnt

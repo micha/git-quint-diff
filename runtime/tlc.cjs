@@ -34,11 +34,16 @@ function translate(jar, cwd, module, ir) {
   if (proc.error || proc.status !== 0) {
     fail('compile', proc.error?.message ?? (summary(proc.stderr) || `translator exited ${proc.status ?? proc.signal}`));
   }
-  const variables = proc.stdout.trim() ? proc.stdout.trim().split('\n') : [];
-  if (variables.some(v => !/^\w+$/.test(v) || v.startsWith('qd')) || new Set(variables).size !== variables.length) {
+  const names = proc.stdout.trim() ? proc.stdout.trim().split('\n') : [];
+  // The pinned pretty-printer emits qualified IR names with underscores. Check
+  // the resulting declarations rather than trusting a guessed witness key.
+  const variables = names.map(v => v.replaceAll('::', '_'));
+  const tla = fs.readFileSync(path.join(cwd, `${module}.tla`), 'utf8');
+  const declared = [...tla.matchAll(/^VARIABLE (\w+)$/gm)].map(m => m[1]);
+  if (variables.some(v => !/^\w+$/.test(v) || ['qdPrefix', 'qdSite', 'qdValue'].includes(v)) ||
+      new Set(variables).size !== variables.length || variables.join(' ') !== declared.join(' ')) {
     fail('compile', 'unsupported compiled variable names or collision with history tracker');
   }
-  const tla = fs.readFileSync(path.join(cwd, `${module}.tla`), 'utf8');
   if (!tla.startsWith('-') || !/^=+\s*$/.test(tla.trimEnd().split('\n').at(-1))) fail('compile', 'malformed compiled module');
   return { variables: variables.sort(), tla };
 }
@@ -61,6 +66,14 @@ function prefixes(histories) {
   return nodes;
 }
 
+// This relation is also exercised before history filtering in the erasure
+// regression. Guards refer only to pre-state operators in the selected instance.
+function transition({ branch, id, when, unless }) {
+  const guard = when ?? (unless?.length ? `~(${joinOr(unless)})` : null);
+  const call = `qdBranch${branch ?? id}`;
+  return guard ? `(${guard}) /\\ ${call}` : call;
+}
+
 function product(model, leaves, nodes) {
   const hiddenFrom = nodes.filter(n => n.children.size).map(n => n.id);
   const choices = [];
@@ -69,7 +82,7 @@ function product(model, leaves, nodes) {
     const phase = leaf.label === null ? (hiddenFrom.length ? `qdPrefix \\in ${set(hiddenFrom)} /\\ UNCHANGED qdPrefix` : null) :
       joinOr(nodes.filter(n => n.children.has(leaf.label)).map(n =>
         `qdPrefix = ${n.id} /\\ qdPrefix' = ${n.children.get(leaf.label).id}`));
-    if (phase && phase !== 'FALSE') choices.push(`(${phase}) /\\ qdBranch${leaf.id} /\\ qdSite' = ${leaf.id}`);
+    if (phase && phase !== 'FALSE') choices.push(`(${phase}) /\\ (${transition(leaf)}) /\\ qdSite' = ${leaf.id}`);
   }
   const completed = nodes.filter(n => n.selected).map(n => n.id);
   const endSites = [0, ...leaves.filter(l => typeof l.label === 'string').map(l => l.id)];
@@ -247,4 +260,4 @@ function explore(jar, cwd, module, compiled, leaves, nodes, type) {
   return { ...results(g, nodes, leaves, type, model.variables), stats: g.stats };
 }
 
-module.exports = { findJar, translate, runGraph, extend, prefixes, explore, compare, TIMEOUT };
+module.exports = { findJar, translate, runGraph, extend, transition, prefixes, explore, compare, TIMEOUT };

@@ -20,11 +20,12 @@ if result.returncode:
 
 path = Path("graph.dot")
 graph = path.read_text(encoding="utf8")
-# NEW must have found the beta=4 candidate before this fault. The test checks
+# NEW must have found the expected candidate before this fault. The test checks
 # the marker so a failure in the shim cannot masquerade as the intended fault.
-node = re.search(r"(?m)^(-?\d+) \[label=.*qdValue = \{4\}", graph)
+outcome = re.escape(os.environ.get("RELEASE_TEST_FAULT_OUTCOME", "4"))
+node = re.search(rf"(?m)^(-?\d+) \[label=.*qdValue = \{{{outcome}\}}", graph)
 if not node:
-    sys.exit("No NEW beta candidate in fault fixture")
+    sys.exit("No expected NEW candidate in fault fixture")
 mode = os.environ["RELEASE_TEST_JAVA_FAULT"]
 if mode == "interrupt":
     # Simulate losing the backend before acknowledging closure, even though a

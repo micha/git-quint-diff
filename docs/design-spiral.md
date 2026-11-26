@@ -11,7 +11,7 @@ git show prototype-handoff:docs/design-spiral.md
 git show prototype-handoff:spec/README.md
 ```
 
-To run an archived oracle, extract that tag into a scratch directory and use the pinned shell from the current checkout. The current CLI never invokes the archive. The release tests extract only the source-binding fixture and deterministic fixture maker at that commit.
+To run an archived oracle, extract that tag into a scratch directory and use the pinned shell from the current checkout. The current CLI never invokes the archive. The release tests extract only the small source-binding fixture and its deterministic fixture maker from that commit.
 
 ## Fresh implementation: committed source-site comparison
 
@@ -28,10 +28,25 @@ That is what the new executable reports. With those two histories, TLC closed ea
 - A separate regression checks the whole unfiltered transition relation from every reachable tagged state against the original scheduler and hand-checked native fixture graphs. It rejects a tag-dependent edge loss that preserves the projected edge union. An independent site-identity check rejects an equal-effect swap that would preserve even the tagged edge union.
 - Reachable evaluation errors, stale/ambiguous/conflicting selectors, unsupported local arguments, invalid blobs, and unavailable backend all failed closed. A fault after NEW had a candidate still produced no delta when closure acknowledgement or a required witness edge was lost. Empty histories, longer histories with hidden progress, denial, disabled calls, and deliberate absence were tested separately.
 
-Reproduce with `nix develop --command python3 -B -m unittest discover -s release-tests -v` (17 tests passed). These are finite fixture checks and failure controls, not evidence for nested schedulers or for unchecked Quint operators. The [current user surface](source-review.md) is narrower than the [first-release contract](supported-scheduler.md).
+Reproduce with `nix develop --command python3 -B -m unittest discover -s release-tests -v` (17 tests passed). These checks covered the top-level scheduler slice only.
 
-## Next milestone: imported consensus scheduler
+## Fresh implementation: imported consensus scheduler
 
 **Question:** Can the same source-bound runtime preserve an imported, nested scheduler and its nondeterminism without model-specific recognition?
 
-Implement source resolution for the imported scheduler, instance constants, nested `if`/payload-free `match` action positions, and mutually exclusive pre-state scalar label predicates. Run [acceptance §2](first-release-acceptance.md#2-imported-consensus-scheduler) on the pinned upstream revisions. Run OLD self-comparison first; then require round one `{0}` → `{0,1,2}` and rounds one–two `{0}` → `{0}`. Replay witnesses through the unchanged scheduler with all seven original variables constrained, and independently check unfiltered erasure and label identity. Keep DML's locally bound arguments out of scope.
+[Acceptance §2](first-release-acceptance.md#2-imported-consensus-scheduler) pairs upstream `883cc2c579bd11954129d207899790e80fb8c91e` and `35df73a703259890303659e421f79016897993b3`, at `N=3`, `F=1`, `ACTUAL_FAULTS=1`, `K=1`, `MAX_ROUNDS=2`. Count the process slots whose `S` contains the empty set, immediately after each selected history. Predict round one `{0}` → `{0,1,2}` and rounds one–two `{0}` → `{0}`.
+
+OLD self-comparison ran first and returned `{0}` for both histories on both sides. OLD → NEW matched both predictions, with only `+ 1` and `+ 2` for `[receive_round_1]`. Reversing the comparison removed exactly those values. The two-history product closed at OLD 171 generated / 171 distinct and NEW 381 generated / 339 distinct, each with zero queued. Selecting only `[receive_round_2]` found no execution, even when the round-one call was left unclassified: the tool did not silently hide it. Invalid saved source files and a dirty index left the committed comparison unchanged.
+
+- Bind calls on the original parsed scheduler, resolving the selected module instance. Check source paths and branching routes again after flattening. Reuse the typed conditions, scrutinee and chosen leaf, without changing the native scheduler. Compile pre-state equalities separately from the native branches; they classify one site's executions rather than replace its guards. A small generic regression changes the predicate variable during the bound step, so using the post-state instead would fail.
+- Independently compile the original scheduler via the Quint CLI and check its TLC graph. OLD closed at 9 initial / 153 distinct / 162 unique edges; NEW at 9 / 267 / 330. Unfiltered classified graphs closed at 9 / 171 / 180 and 9 / 297 / 360 respectively. For every reachable classified state, erasing the tag preserved its outgoing native successors. Check tag and source identity separately against original stage and round routing.
+- Replay all reported witnesses in the original graph using all seven original variables. Both added outcomes have three-step witnesses. The oracle found seven native steps to the two-round endpoints, which have no deltas. Mutating a later proposal to `9` made replay fail. Selecting the uncalled helper or conflicting predicates, or losing NEW's closure after finding a candidate, returned `incomplete` without deltas.
+- The exact historical [DML pair](first-release-acceptance.md#3-dml-deliberately-out-of-scope) is still `incomplete`: Quint 0.33.1 rejects OLD at `observation` (`QNT000`). That proves only parser failure. The independently typechecked derivative still rejects the locally chosen public argument during binding.
+
+Reproduce with `nix develop --command python3 -B -m unittest discover -s release-tests -v` (24 tests passed). The [consensus fixture](../release-tests/fixtures/consensus/README.md) reconstructs the exact upstream commit IDs and required objects offline. These results cover the selected scenario and finite histories, not general Quint support.
+
+## Next milestone: first release candidate
+
+**Question:** Can someone install the command in a clean environment and reproduce the same scoped reports without access to this checkout or the prototype?
+
+Package the executable and its pinned dependencies. Run the public-interface acceptance suite against the installed `git quint-diff` from disposable model repositories, including the source-site and consensus positives and DML fail-closed control. Document install and review commands, the supported scheduler subset, and the JSON and exit-status contract. Do not expand the scheduler subset or add working-tree comparisons before this gate passes.

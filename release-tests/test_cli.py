@@ -512,6 +512,69 @@ class CliTest(FixtureCase):
                                 text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_shared_site_predicates_classify_before_the_step(self):
+        self.file("workflow.qnt", """module workflow {
+  const START: int
+  var x: int
+  action init = x' = START
+  action bump = x' = x + 1
+  action dispatch = if (x <= 2) {
+    any {
+      all { x > 0, bump },
+      all { x == 1, x' = 3 },
+    }
+  } else all { x' = x }
+}
+""")
+        rev = self.commit("Classify a nested scheduler site that changes the label variable")
+        line, col = self.coordinates(rev, "bump },")
+        hidden = [self.coordinates(rev, fragment) for fragment in ("all { x == 1", "all { x' = x }")]
+        site = {"line": line, "column": col, "callee": "workflow::bump"}
+        side = {"entrypoint": "workflow.qnt", "module": "workflow", "init": "init", "step": "dispatch",
+                "constants": {"START": 1}, "observe": "x",
+                "bindings": {"first": {**site, "when": "x == 1"}, "second": {**site, "when": "x == 2"}},
+                "hidden": [{"line": ln, "column": c} for ln, c in hidden]}
+        review = self.review(rev, rev, histories=[["first", "second"], ["first"], ["second"], []],
+                             old_side=side, new_side=side)
+        self.assert_rows(self.complete(rev, rev, review), [
+            ([], [1], [1], []),
+            (["first"], [2], [2], []),
+            (["second"], [], [], []),
+            (["first", "second"], [3], [3], []),
+        ])
+        # A call from an unmatched pre-state is not a hidden transition.
+        unlabeled = side | {"bindings": {"second": side["bindings"]["second"]}}
+        review = self.review(rev, rev, histories=[["second"]], old_side=unlabeled, new_side=unlabeled)
+        self.assert_rows(self.complete(rev, rev, review), [(["second"], [], [], [])])
+        # The site predicate alone is not enough: retain the outer if guard.
+        guarded = side | {"constants": {"START": 3}, "bindings": {"third": {**site, "when": "x == 3"}}}
+        review = self.review(rev, rev, histories=[["third"]], old_side=guarded, new_side=guarded)
+        self.assert_rows(self.complete(rev, rev, review), [(["third"], [], [], [])])
+        for when, diagnostic in (("x == 1", "conflicting selector"), ("x > 1", "pre-state scalar variable")):
+            conflict = side | {"bindings": side["bindings"] | {"second": {**site, "when": when}}}
+            review = self.review(rev, rev, histories=[["first", "second"]], old_side=side, new_side=conflict)
+            self.incomplete(rev, rev, review, "new", f"binding:.*{diagnostic}")
+
+    def test_constants_are_exact_or_fail_closed(self):
+        self.file("workflow.qnt", """module workflow {
+  const INITIAL: str
+  var x: str
+  action init = x' = INITIAL
+  action dispatch = x' = x
+}
+""")
+        rev = self.commit("Initialize from an exact string constant")
+        side = {"entrypoint": "workflow.qnt", "module": "workflow", "init": "init", "step": "dispatch",
+                "constants": {"INITIAL": "ready"}, "observe": "x", "bindings": {}, "hidden": []}
+        changed = side | {"constants": {"INITIAL": "waiting"}}
+        review = self.review(rev, rev, histories=[[]], old_side=side, new_side=changed)
+        self.assert_rows(self.complete(rev, rev, review), [([], ["ready"], ["waiting"], [('-', 'ready'), ('+', 'waiting')])])
+        # Pinned PrettyWriter would encode this as a newline instead of the
+        # specified backslash plus n. It must not create spurious deltas.
+        unrepresentable = side | {"constants": {"INITIAL": r"ready\n"}}
+        review = self.review(rev, rev, histories=[[]], old_side=side, new_side=unrepresentable)
+        self.incomplete(rev, rev, review, "new", r"compile:.*string literal cannot be translated losslessly")
+
     def test_local_nondeterministic_public_call_arguments_fail_closed(self):
         self.replace("workflow.qnt", "record(4),", "nondet destination = Set(3, 4).oneOf()\n      record(destination),")
         self.typecheck()

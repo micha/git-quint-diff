@@ -1,0 +1,12 @@
+tree 9090b28f926450c85b46b16cbb540e7ce3b32a27
+parent 883cc2c579bd11954129d207899790e80fb8c91e
+author bugarela <gabrielamoreira05@gmail.com> 1741280492 -0300
+committer bugarela <gabrielamoreira05@gmail.com> 1741280492 -0300
+gpgsig -----BEGIN SSH SIGNATURE-----
+ U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgr2PS8R5QmLm+/7554w5aQhiMbL
+ wQPuzczgUdjtg7NccAAAADZ2l0AAAAAAAAAAZzaGE1MTIAAABTAAAAC3NzaC1lZDI1NTE5
+ AAAAQFBesDVEMldzPJseGzWMr0PTPuS72Heynv19jdSfmMFkWOZJTV5UXLyKTsY+aFp66S
+ 9hN9n9UEVgw2HxjgL15QI=
+ -----END SSH SIGNATURE-----
+
+Fix union and improve comments

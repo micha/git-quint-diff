@@ -2,7 +2,7 @@
 
 Review what two commits **add or remove from a Quint model's behavior**, not just what changed in the source. Git selects the model snapshots; the review selects the original scheduler calls, public histories, and observation. The CLI compares the **sets** of reachable outcomes and supplies a replayable witness for each addition or removal. It uses neither LLMs nor random simulation.
 
-**Status:** Fresh implementation, first source-bound slice. It supports finite schedulers with direct calls in top-level alternatives. The [imported consensus scheduler](docs/first-release-acceptance.md#2-imported-consensus-scheduler) is the next milestone, not yet supported. The pure-adapter prototype and seven design experiments are archived at `prototype-handoff` (`064f97d`).
+**Status:** Pre-release. The source-bound runtime supports imported, nested schedulers and pre-state label predicates. It has been checked on the [upstream Quint consensus pair](docs/first-release-acceptance.md#2-imported-consensus-scheduler). The pure-adapter prototype and seven design experiments are archived at `prototype-handoff` (`064f97d`).
 
 ## Try it
 
@@ -31,4 +31,4 @@ The tool reads only committed Git objects, including transitive imports. It repo
 nix develop --command python3 -B -m unittest discover -s release-tests -v
 ```
 
-The harness runs the new executable on disposable Git repositories. It reads fixture input from the archive tag and does not use prototype code as the program under test. See [the design record](docs/design-spiral.md) for the archive and independent checks.
+The harness runs the executable on disposable Git repositories, including offline reconstructions of the exact upstream consensus commits. It checks consensus outcomes and witnesses against an independently compiled native scheduler. See [the design record](docs/design-spiral.md) for the checks and prototype archive.

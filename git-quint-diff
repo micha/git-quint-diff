@@ -15,6 +15,7 @@ const text = x => typeof x === 'string' && x.trim() !== '';
 const positive = x => Number.isSafeInteger(x) && x > 0;
 const keys = (x, allowed) => isObject(x) && Object.keys(x).every(k => allowed.includes(k));
 const position = x => positive(x.line) && positive(x.column);
+const scalar = x => typeof x === 'boolean' || typeof x === 'string' || Number.isSafeInteger(x);
 const historyKey = JSON.stringify;
 
 function args(argv) {
@@ -43,16 +44,23 @@ function reviewConfig(file) {
   const labels = new Set(histories.flat());
   for (const name of SIDES) {
     const side = data[name];
-    require(keys(side, ['entrypoint', 'module', 'init', 'step', 'observe', 'bindings', 'hidden']) &&
-      text(side.entrypoint) && text(side.observe) && ['module', 'init', 'step'].every(k => text(side[k]) && quint.IDENT.test(side[k])),
+    require(keys(side, ['entrypoint', 'module', 'constants', 'init', 'step', 'observe', 'bindings', 'hidden']) &&
+      text(side.entrypoint) && text(side.observe) && text(side.module) && quint.IDENT.test(side.module) &&
+      ['init', 'step'].every(k => text(side[k]) && side[k].split('::').every(s => quint.IDENT.test(s))),
     `${name}: specify entrypoint, module, init, step and observe`);
+    require(side.constants === undefined || (isObject(side.constants) &&
+      Object.entries(side.constants).every(([k, v]) => quint.IDENT.test(k) && scalar(v))),
+    `${name}: constants must map identifiers to scalar literals`);
     require(isObject(side.bindings) && [...labels].every(label => Object.hasOwn(side.bindings, label)),
       `${name}: explicitly bind each requested label (use null for absence)`);
     for (const [label, selector] of Object.entries(side.bindings)) {
-      require(text(label) && (selector === null || (keys(selector, ['callee', 'line', 'column']) && text(selector.callee) &&
-        (position(selector) || (selector.line === undefined && selector.column === undefined)))), `${name}: invalid selector for ${label}`);
+      require(text(label) && (selector === null || (keys(selector, ['callee', 'path', 'line', 'column', 'when']) && text(selector.callee) &&
+        (selector.when === undefined || text(selector.when)) && (selector.path === undefined || text(selector.path)) &&
+        (position(selector) || (selector.line === undefined && selector.column === undefined && selector.path === undefined)))),
+      `${name}: invalid selector for ${label}`);
     }
-    require(Array.isArray(side.hidden) && side.hidden.every(h => keys(h, ['line', 'column']) && position(h)),
+    require(Array.isArray(side.hidden) && side.hidden.every(h => keys(h, ['path', 'line', 'column']) && position(h) &&
+      (h.path === undefined || text(h.path))),
       `${name}: hidden must list leaf positions`);
   }
   data.histories.sort((a, b) => a.length - b.length || tlc.compare(historyKey(a), historyKey(b)));
@@ -119,17 +127,17 @@ function review(config, revisions) {
       Object.assign(report[side], { bindings: binding.bindings, hidden: binding.hidden, scheduler: binding.scheduler,
         blobs: Object.fromEntries([...snap.blobs].sort(([a], [b]) => tlc.compare(a, b))), observationType: model.type });
       phase = 'compile';
-      prepared.push({ binding, type: model.type, ir: quint.compilation(api, model, binding, options) });
+      prepared.push({ binding, type: model.type, module: model.module, ir: quint.compilation(api, model, binding) });
     }
     side = null;
     if (prepared[0].type !== prepared[1].type) quint.fail('observation', 'OLD and NEW observation types differ');
     phase = 'exploration';
     scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'git-quint-diff-'));
-    const results = prepared.map(({ binding, type, ir }, i) => {
+    const results = prepared.map(({ binding, type, module, ir }, i) => {
       side = SIDES[i];
       const cwd = path.join(scratch, side);
       fs.mkdirSync(cwd);
-      const outcome = tlc.explore(jar, cwd, config[side].module, ir, binding.leaves, nodes, type);
+      const outcome = tlc.explore(jar, cwd, module, ir, binding.leaves, nodes, type);
       report[side].closure = outcome.stats;
       return outcome;
     });
@@ -154,9 +162,11 @@ function terminal(report) {
     const data = report[side];
     lines.push(`${side.toUpperCase()} ${data.revision ?? data.requestedRevision}: ${data.entrypoint} (${data.module}, init ${data.init}, step ${data.step})`,
       `  Observe: ${data.observe}${data.observationType ? ` (${data.observationType})` : ''}`);
-    if (!data.scheduler) lines.push('  Requested selectors (not resolved):');
+    if (data.constants !== undefined) lines.push(`  Constants: ${JSON.stringify(data.constants)}`);
+    if (data.scheduler) lines.push(`  Scheduler: ${data.scheduler.module}::${data.scheduler.action} at ${data.scheduler.path}:${data.scheduler.line}:${data.scheduler.column}`);
+    else lines.push('  Requested selectors (not resolved):');
     for (const [label, site] of Object.entries(data.bindings)) {
-      lines.push(`  ${label}: ${!site ? 'absent (explicit)' : `${site.path ?? data.entrypoint}:${site.line ?? '?'}:${site.column ?? '?'} ${site.callee}${site.declaration ? ` → ${site.declaration.path}:${site.declaration.line}:${site.declaration.column}` : ''}`}`);
+      lines.push(`  ${label}: ${!site ? 'absent (explicit)' : `${site.path ?? data.entrypoint}:${site.line ?? '?'}:${site.column ?? '?'} ${site.callee}${site.declaration ? ` → ${site.declaration.path}:${site.declaration.line}:${site.declaration.column}` : ''}${site.when ? ` when ${site.when} (pre-state)` : ''}`}`);
     }
     for (const site of data.hidden) lines.push(`  Hidden: ${site.path ?? data.entrypoint}:${site.line}:${site.column}`);
     if (data.closure) lines.push(`  Search: ${data.closure.generated} generated, ${data.closure.distinct} distinct, ${data.closure.queued} queued`);

@@ -2,7 +2,7 @@
 
 **Design question:** What is the smallest source-bound comparison that a reviewer can reproduce from committed Quint models without running the experiment drivers?
 
-This is the target first release's semantic contract, not a specification of flags, a review file format, a language, a compiler, or an instrumentation technique. The [comparison contract](comparison-contract.md) defines the general set comparison and the [black-box acceptance cases](first-release-acceptance.md) define the release gate. The [current CLI slice](source-review.md) does not yet implement the imported consensus scheduler.
+This is the target first release's semantic contract, not a specification of flags, a review file format, a language, a compiler, or an instrumentation technique. The [comparison contract](comparison-contract.md) defines the general set comparison and the [black-box acceptance cases](first-release-acceptance.md) define the release gate. The [current CLI](source-review.md) supports the imported consensus case; the [design record](design-spiral.md) lists the completed checks and remaining release work.
 
 ## Inputs and snapshot isolation
 
