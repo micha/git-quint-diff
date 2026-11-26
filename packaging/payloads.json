@@ -23,14 +23,12 @@
     "version": "0.62.4",
     "sha256": "8ac8488422c30d552735bae11b92a2d014d8e02e8608702acc08f9a2d8a9abb2"
   },
+  "backend_sources": {
+    "apalache-0.62.4-source.tar.gz": ["https://codeload.github.com/apalache-mc/apalache/tar.gz/refs/tags/v0.62.4", "ba75d76c939c76512d246771b5610a105f8c46f346087c6ecd966bd71af3d370"],
+    "tlaplus-1.8.0-source.tar.gz": ["https://codeload.github.com/tlaplus/tlaplus/tar.gz/refs/tags/v1.8.0", "2d54e9c448e85d228f23dac96592bc84e20ed66b85273d850ffb7794bf646197"]
+  },
   "notice_files": {
     "Apalache-NOTICE": ["https://raw.githubusercontent.com/apalache-mc/apalache/v0.62.4/NOTICE", "787ac7de707fb7d6761946b8005153a03600f3187ee541dd12516872a7b96b79"],
-    "cvc5-COPYING": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/COPYING", "341cd23c1133beda63509cad8d82b96a47dc8e321bdd49ce8190e371110ccff7"],
-    "cvc5-AUTHORS": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/AUTHORS", "561bdaab091a514306dc2537aaa0b9192bfb7a2eb2e0f7feee5442236dfadcfa"],
-    "cvc5-lgpl-3.0.txt": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/licenses/lgpl-3.0.txt", "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"],
-    "cvc5-gpl-3.0.txt": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/licenses/gpl-3.0.txt", "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"],
-    "cvc5-GCC-exception-3.1.txt": ["https://raw.githubusercontent.com/cvc5/cvc5/cvc5-1.3.4/licenses/GCC-exception-3.1.txt", "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"],
-    "Z3-LICENSE.txt": ["https://raw.githubusercontent.com/Z3Prover/z3/z3-4.14.1/LICENSE.txt", "e617cad2ab9347e3129c2b171e87909332174e17961c5c3412d0799469111337"],
     "sweet-monads-LICENSE": ["https://raw.githubusercontent.com/JSMonk/sweet-monads/bde4474989df79601e4e5966d65f33fe29d0f6ce/LICENSE", "bb769f3e97342f15aa25b67fad736d1233b0c3c00086f139bccbc8a8fc68620a"],
     "undici-types-LICENSE": ["https://raw.githubusercontent.com/nodejs/undici/v5.26.5/LICENSE", "a6db8096b2707bc0102d256917d4d33f298ba36d8c3f25de067a2b5bb379db27"],
     "DefinitelyTyped-LICENSE": ["https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ca8d73dbc9d57342b5dfec6fa745e1509c7d03fe/LICENSE", "0a48f63d7d32a49d196dce4b2e0cbc236c2cc8fef42cb20e005e4d5f813cc8f6"]

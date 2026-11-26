@@ -38,11 +38,13 @@
             mkdir -p "$out/apalache-dist-${apalacheVersion}"
             tar -xf ${apalacheDist} -C "$out/apalache-dist-${apalacheVersion}"
           '';
-          # The end-user CLI needs only the JAR; keep the upstream distribution
-          # layout in the dev shell for the independent Quint CLI oracle.
-          apalacheRuntime = pkgs.runCommand "git-quint-diff-apalache-${apalacheVersion}" { } ''
+          # The packaged translator and TLC do not use the SMT solver payloads.
+          # Keep the unmodified distribution in the dev shell for the independent oracle.
+          apalacheRuntime = pkgs.runCommand "git-quint-diff-apalache-${apalacheVersion}"
+            { nativeBuildInputs = [ pkgs.python3 ]; } ''
             jar="apalache-dist-${apalacheVersion}/apalache/lib/apalache.jar"
-            install -Dm644 "${apalacheCache}/$jar" "$out/$jar"
+            mkdir -p "$out/$(dirname "$jar")"
+            python3 -B ${./packaging/repack-backend.py} "${apalacheCache}/$jar" "$out/$jar"
           '';
           quintPackage = "${quint}/lib/node_modules/@informalsystems/quint";
         in {

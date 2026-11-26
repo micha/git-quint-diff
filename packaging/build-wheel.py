@@ -180,8 +180,12 @@ def stage(scratch, cache, target, pins):
                   apalache["sha256"]), scratch)
     apalache_home = payload / "quint-home" / f"apalache-dist-{version}" / "apalache"
     (apalache_home / "lib").mkdir(parents=True)
-    shutil.move(scratch / "apalache" / "lib" / "apalache.jar", apalache_home / "lib" / "apalache.jar")
+    subprocess.run([sys.executable, "-B", str(HERE / "repack-backend.py"),
+                    str(scratch / "apalache" / "lib" / "apalache.jar"),
+                    str(apalache_home / "lib" / "apalache.jar")], check=True)
     shutil.copyfile(scratch / "apalache" / "LICENSE", licenses / "Apalache-LICENSE")
+    sources.update({name: fetch(cache, url, digest)
+                    for name, (url, digest) in sorted(pins["backend_sources"].items())})
     for name, (url, digest) in sorted(pins["notice_files"].items()):
         shutil.copyfile(fetch(cache, url, digest), licenses / name)
     shutil.copyfile(HERE / "REDISTRIBUTION.md", licenses / "REDISTRIBUTION.md")

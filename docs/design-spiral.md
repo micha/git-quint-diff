@@ -59,4 +59,8 @@ On Linux arm64 with system Git 2.43.0, both `nix profile add .` and an offline `
 
 **Question:** Do both install forms pass on the intended native hosts, and can the tested payloads be made available with all required license and source materials?
 
-Run the matrix on a candidate source branch; the workflow saves only checksums. The owner selected MIT for first-party code and documentation. That leaves a separate bundled dependency gate: do not tag a release or offer binaries until both native jobs pass on the commit to be tagged and the redistribution checks are cleared. Do not expand the scheduler subset or add working-tree comparisons before this gate passes.
+Run the matrix on a candidate source branch; the workflow saves only checksums. The owner selected MIT for first-party code and documentation. The native jobs must pass on the commit to be tagged; that alone does not clear the bundled dependency gate.
+
+The exact upstream Apalache 0.62.4 release JAR (`e5223915…`) embeds cvc5, Z3, and zstd-jni native builds, including binaries for platforms the CLI does not target. Neither the IR translator nor the tested TLC path requires them. Both install forms now use a deterministic repack that removes 325 entries, including 39 native binaries; the regression checks every retained entry byte for byte and verifies the output SHA-256 `1d2dab08ca132c1d7cac2ca0cc3c1f743525b18a51aef3c5d97a4d549d30d5cd`. The independent oracle still uses the unmodified backend. Wheel builds now emit the pinned TLC and Apalache sources as well as the Temurin companions.
+
+Do not tag or offer binaries yet. The remaining JVM contents still need a [redistribution audit](../packaging/REDISTRIBUTION.md). For example, the retained Logback 1.5.32 classes were matched byte for byte against the official Maven artifact, but the merged JAR lacks a separately identified Logback notice. Do not expand scheduler scope or add working-tree comparisons before the release gate passes.
