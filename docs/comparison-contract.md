@@ -22,9 +22,9 @@ Use factual `+` and `−` outcome labels, not a `Findings` column or generated i
 
 An explicit list of histories defines the review scope; a complete result can be exhaustive for that list without covering other histories. When asking instead for all histories up to a maximum length, the bound limits **which histories** were checked, not the validity of differences for histories explored completely. An original-transition bound limits **which executions** were checked. Report limits explicitly. Failing to finish a history within the requested scope is **incomplete**, not a completed bounded result. Neither an explicit list nor exhaustion through a depth establishes anything about unsearched histories or executions.
 
-## Pure-adapter prototype replay checks
+## Archived pure-adapter replay checks
 
-Verify the finite comparison model with Quint/TLC first and record the checked scope. Then use the CLI on real Git revisions and check these cases against that model:
+The [prototype archive](design-spiral.md#archive) retains the finite comparison model, Quint/TLC verification, and replay of the cases below. For current source-bound acceptance, see [first-release-acceptance.md](first-release-acceptance.md).
 
 | Case | Required result |
 | --- | --- |

@@ -1,119 +1,193 @@
 #!/usr/bin/env node
 'use strict';
 
-const { parseArgs } = require('node:util');
-const { openSnapshot, repoPath } = require('./lib/snapshot.cjs');
-const { compileReview } = require('./lib/quint.cjs');
-const { checkHistoryBudget, compare } = require('./lib/compare.cjs');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const git = require('./runtime/git-snapshot.cjs');
+const quint = require('./runtime/quint-model.cjs');
+const tlc = require('./runtime/tlc.cjs');
 
-const usage = `Usage: git quint-diff --model PATH --scenario NAME --action LABEL [--action LABEL ...] --max-depth N [--json] OLD NEW
+const SIDES = ['old', 'new'];
+const usage = 'Usage: git quint-diff --review FILE [--json] OLD NEW';
+const isObject = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+const text = x => typeof x === 'string' && x.trim() !== '';
+const positive = x => Number.isSafeInteger(x) && x > 0;
+const keys = (x, allowed) => isObject(x) && Object.keys(x).every(k => allowed.includes(k));
+const position = x => positive(x.line) && positive(x.column);
+const historyKey = JSON.stringify;
 
-Compare two committed Git revisions using a finite Quint review adapter.`;
-
-function options() {
-  const { values, positionals } = parseArgs({
-    allowPositionals: true,
-    options: {
-      model: { type: 'string' },
-      scenario: { type: 'string' },
-      action: { type: 'string', multiple: true },
-      'max-depth': { type: 'string' },
-      json: { type: 'boolean' },
-      help: { type: 'boolean', short: 'h' },
-    },
-  });
-  if (values.help) return { help: true };
-  if (!values.model || !values.scenario || !values.action?.length || values.action.some(label => !label)
-      || !/^\d+$/u.test(values['max-depth'] ?? '') || positionals.length !== 2) {
-    throw new Error('model, scenario, action(s), max-depth and two commit refs are required');
+function args(argv) {
+  const revisions = [];
+  let review, json = false, options = true;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (options && arg === '--') options = false;
+    else if (options && arg === '--review' && !review && argv[i + 1]) review = argv[++i];
+    else if (options && arg === '--json' && !json) json = true;
+    else if (options && arg.startsWith('-')) throw new Error(`unknown or repeated option: ${arg}`);
+    else revisions.push(arg);
   }
-  const maxDepth = Number(values['max-depth']);
-  if (maxDepth > 100) throw new Error('--max-depth must be from 0 to 100');
-  const model = repoPath('.', values.model);
-  if (!model.endsWith('.qnt')) throw new Error('--model must name a repository-relative .qnt file');
-  const actions = [...new Set(values.action)].sort();
-  checkHistoryBudget(actions, maxDepth);
-  return { model, scenario: values.scenario, actions, maxDepth, json: values.json, refs: positionals };
+  if (!review || revisions.length !== 2) throw new Error('expected a review file and two committed revisions');
+  return { review, revisions, json };
 }
 
-function render(report) {
-  const json = JSON.stringify;
-  const lines = [
-    `OLD ${report.old_revision ?? json(report.old_ref)}  NEW ${report.new_revision ?? json(report.new_ref)}`,
-    `Model ${json(report.model)} · Scenario ${json(report.scenario)} · Observe ${report.observation}`,
-    `Actions ${json(report.actions)} · Depth 0–${report.max_depth} · ${report.status} (${report.histories.length} histories checked)`,
-  ];
-  let changed = false;
-  for (const row of report.histories) {
-    if (!row.witnesses.length) continue;
-    changed = true;
-    lines.push(`\n${row.history.length ? row.history.map(label => json(label)).join(' → ') : '(empty history)'}`);
-    for (const side of ['old', 'new']) {
-      const { outcomes, stop } = row[side];
-      const noTrace = stop?.reason === 'missing_action' ? 'missing action' : 'disabled action';
-      lines.push(`  ${side.toUpperCase()} ${stop ? `no trace (${noTrace} at step ${stop.step})` : json(outcomes)}`);
+function reviewConfig(file) {
+  const require = (test, message) => { if (!test) throw new Error(message); };
+  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  require(keys(data, ['scenario', 'histories', ...SIDES]) && text(data.scenario), 'review needs a scenario name');
+  const histories = data.histories;
+  require(Array.isArray(histories) && histories.length > 0 && histories.every(h => Array.isArray(h) && h.length <= 2 && h.every(text)),
+    'select a nonempty list of exact histories of length 0–2');
+  require(new Set(histories.map(historyKey)).size === histories.length, 'duplicate history');
+  const labels = new Set(histories.flat());
+  for (const name of SIDES) {
+    const side = data[name];
+    require(keys(side, ['entrypoint', 'module', 'init', 'step', 'observe', 'bindings', 'hidden']) &&
+      text(side.entrypoint) && text(side.observe) && ['module', 'init', 'step'].every(k => text(side[k]) && quint.IDENT.test(side[k])),
+    `${name}: specify entrypoint, module, init, step and observe`);
+    require(isObject(side.bindings) && [...labels].every(label => Object.hasOwn(side.bindings, label)),
+      `${name}: explicitly bind each requested label (use null for absence)`);
+    for (const [label, selector] of Object.entries(side.bindings)) {
+      require(text(label) && (selector === null || (keys(selector, ['callee', 'line', 'column']) && text(selector.callee) &&
+        (position(selector) || (selector.line === undefined && selector.column === undefined)))), `${name}: invalid selector for ${label}`);
     }
-    for (const { side, outcome, states } of row.witnesses) {
-      lines.push(`  ${side === 'new' ? '+' : '−'} ${json(outcome)}  ${side.toUpperCase()} states ${json(states)}`);
+    require(Array.isArray(side.hidden) && side.hidden.every(h => keys(h, ['line', 'column']) && position(h)),
+      `${name}: hidden must list leaf positions`);
+  }
+  data.histories.sort((a, b) => a.length - b.length || tlc.compare(historyKey(a), historyKey(b)));
+  return data;
+}
+
+function differences(report, nodes, results) {
+  const order = (a, b) => typeof a === typeof b ? tlc.compare(a, b) : tlc.compare(typeof a, typeof b);
+  return nodes.filter(n => n.selected).sort((a, b) => a.history.length - b.history.length ||
+    tlc.compare(historyKey(a.history), historyKey(b.history))).map(({ id, history }) => {
+    const values = results.map(r => r.byPrefix[id]);
+    const rows = values.map((frontier, index) => {
+      const outcomes = [...frontier.keys()].sort(order);
+      if (outcomes.length) return { outcomes };
+      let node = nodes[0];
+      if (!results[index].reached.has(0)) return { outcomes, reason: 'no-initial-state' };
+      for (const label of history) {
+        node = node.children.get(label);
+        if (!results[index].reached.has(node.id)) {
+          return { outcomes, reason: report[SIDES[index]].bindings[label] === null ? 'absent' : 'disabled', label };
+        }
+      }
+      quint.fail('evidence', 'reached requested history has no observation');
+    });
+    const deltas = values.flatMap((frontier, index) => [...frontier.keys()].sort(order)
+      .filter(outcome => !values[1 - index].has(outcome)).map(outcome => ({
+        change: index === 0 ? '-' : '+', outcome,
+        witness: { revision: report[SIDES[index]].revision, scenario: report.scenario, history, outcome, ...frontier.get(outcome) },
+      })));
+    return { history, old: rows[0], new: rows[1], deltas };
+  });
+}
+
+function review(config, revisions) {
+  const nodes = tlc.prefixes(config.histories);
+  const report = {
+    version: 1, status: 'incomplete', scenario: config.scenario,
+    scope: { histories: config.histories, nativeTransitionBound: null, hidden: 'explicit-only',
+      observationPoint: 'end-of-exact-history', backendTimeoutMs: tlc.TIMEOUT, backend: 'Quint 0.33.1 / Apalache 0.62.4 / TLC' },
+    histories: [], diagnostics: [],
+    ...Object.fromEntries(SIDES.map((side, i) => [side, { ...config[side], requestedRevision: revisions[i], revision: null }])),
+  };
+  let side = null, phase = 'backend', scratch;
+  try {
+    // Pin both revisions before loading or exploring either one.
+    for (const name of SIDES) {
+      side = name;
+      phase = 'snapshot';
+      report[side].revision = git.resolve(report[side].requestedRevision);
+    }
+    side = null;
+    phase = 'backend';
+    const api = quint.quintApi();
+    const jar = tlc.findJar();
+    const prepared = [];
+    for (const name of SIDES) {
+      side = name;
+      const options = config[side];
+      const snap = git.snapshot(report[side].revision);
+      phase = 'parse';
+      const model = quint.parseModel(api, snap, options);
+      phase = 'binding';
+      const binding = quint.bind(model, options);
+      Object.assign(report[side], { bindings: binding.bindings, hidden: binding.hidden, scheduler: binding.scheduler,
+        blobs: Object.fromEntries([...snap.blobs].sort(([a], [b]) => tlc.compare(a, b))), observationType: model.type });
+      phase = 'compile';
+      prepared.push({ binding, type: model.type, ir: quint.compilation(api, model, binding, options) });
+    }
+    side = null;
+    if (prepared[0].type !== prepared[1].type) quint.fail('observation', 'OLD and NEW observation types differ');
+    phase = 'exploration';
+    scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'git-quint-diff-'));
+    const results = prepared.map(({ binding, type, ir }, i) => {
+      side = SIDES[i];
+      const cwd = path.join(scratch, side);
+      fs.mkdirSync(cwd);
+      const outcome = tlc.explore(jar, cwd, config[side].module, ir, binding.leaves, nodes, type);
+      report[side].closure = outcome.stats;
+      return outcome;
+    });
+    side = null;
+    phase = 'evidence';
+    report.histories = differences(report, nodes, results);
+    report.status = 'exhaustive';
+  } catch (error) {
+    report.diagnostics.push({ side, phase: error.phase ?? phase, message: error.message });
+  } finally {
+    if (scratch) fs.rmSync(scratch, { recursive: true, force: true });
+  }
+  return report;
+}
+
+function terminal(report) {
+  const lines = [`Scenario: ${report.scenario}`, `Status: ${report.status}`,
+    `Scope: exact histories ${report.scope.histories.map(h => `[${h.join(' → ')}]`).join(', ')}; explicit hidden steps only; no native-transition bound`,
+    `Observation point: end of exact history (initial state for [])`,
+    `Backend: ${report.scope.backend}; timeout: ${report.scope.backendTimeoutMs / 1000}s per Java process`];
+  for (const side of SIDES) {
+    const data = report[side];
+    lines.push(`${side.toUpperCase()} ${data.revision ?? data.requestedRevision}: ${data.entrypoint} (${data.module}, init ${data.init}, step ${data.step})`,
+      `  Observe: ${data.observe}${data.observationType ? ` (${data.observationType})` : ''}`);
+    if (!data.scheduler) lines.push('  Requested selectors (not resolved):');
+    for (const [label, site] of Object.entries(data.bindings)) {
+      lines.push(`  ${label}: ${!site ? 'absent (explicit)' : `${site.path ?? data.entrypoint}:${site.line ?? '?'}:${site.column ?? '?'} ${site.callee}${site.declaration ? ` → ${site.declaration.path}:${site.declaration.line}:${site.declaration.column}` : ''}`}`);
+    }
+    for (const site of data.hidden) lines.push(`  Hidden: ${site.path ?? data.entrypoint}:${site.line}:${site.column}`);
+    if (data.closure) lines.push(`  Search: ${data.closure.generated} generated, ${data.closure.distinct} distinct, ${data.closure.queued} queued`);
+  }
+  for (const entry of report.diagnostics) lines.push(`${entry.side?.toUpperCase() ?? 'Comparison'} ${entry.phase}: ${entry.message}`);
+  for (const row of report.histories) {
+    lines.push(`\n[${row.history.join(' → ')}]`);
+    for (const name of SIDES) {
+      const { outcomes, reason, label } = row[name];
+      lines.push(`  ${name.toUpperCase()}: ${outcomes.length ? JSON.stringify(outcomes) : `no matching execution (${reason}${label ? `: ${label}` : ''})`}`);
+    }
+    for (const { change, outcome, witness } of row.deltas) {
+      lines.push(`${change} ${JSON.stringify(outcome)} (${witness.revision})`, `    init ${JSON.stringify(witness.initial)}`);
+      for (const { state, site, label } of witness.steps) {
+        lines.push(`    ${label ?? 'hidden'} ${site.path}:${site.line}:${site.column} → ${JSON.stringify(state)}`);
+      }
     }
   }
-  if (!changed && !report.error) lines.push('\nNo added or removed outcomes within the checked bound.');
-  if (report.error) lines.push(`\nIncomplete: ${report.error}`);
   return lines.join('\n');
 }
 
-function run(opts) {
-  const [oldRef, newRef] = opts.refs;
-  const report = {
-    schema_version: 1,
-    model: opts.model,
-    scenario: opts.scenario,
-    actions: opts.actions,
-    observation: 'review::observe',
-    max_depth: opts.maxDepth,
-    old_ref: oldRef,
-    new_ref: newRef,
-    old_revision: null,
-    new_revision: null,
-    status: 'bounded',
-    histories: [],
-  };
-  const onSnapshot = (side, ref, work) => {
-    try {
-      return work();
-    } catch (error) {
-      throw new Error(`${side} snapshot ${JSON.stringify(ref)}: ${error.message}`, { cause: error });
-    }
-  };
-  const resolve = (side, ref) => onSnapshot(side, ref, () => {
-    const snapshot = openSnapshot(ref);
-    report[`${side}_revision`] = snapshot.revision;
-    return snapshot;
-  });
-  // Diagnostics from the pinned Quint dependencies must not corrupt JSON stdout.
-  const { log, debug } = console;
-  console.log = console.debug = console.error;
+if (process.argv.length === 3 && process.argv[2] === '--help') {
+  console.log(usage);
+} else {
   try {
-    const oldSnapshot = resolve('old', oldRef);
-    const newSnapshot = resolve('new', newRef);
-    const old = onSnapshot('old', oldRef, () => compileReview(oldSnapshot, opts.model));
-    const fresh = onSnapshot('new', newRef, () => compileReview(newSnapshot, opts.model));
-    for (const row of compare(old, fresh, opts)) report.histories.push(row);
+    const { review: file, revisions, json } = args(process.argv.slice(2));
+    const report = review(reviewConfig(file), revisions);
+    console.log(json ? JSON.stringify(report, null, 2) : terminal(report));
+    process.exitCode = report.status === 'exhaustive' ? 0 : 1;
   } catch (error) {
-    report.status = 'incomplete';
-    report.error = error.message;
-  } finally {
-    Object.assign(console, { log, debug });
+    console.error(`${error.message}\n${usage}`);
+    process.exitCode = 2;
   }
-  process.stdout.write(`${opts.json ? JSON.stringify(report, null, 2) : render(report)}\n`);
-  return report.status === 'incomplete' ? 1 : 0;
-}
-
-try {
-  const opts = options();
-  if (opts.help) process.stdout.write(`${usage}\n`);
-  else process.exitCode = run(opts);
-} catch (error) {
-  console.error(`${error.message}\n\n${usage}`);
-  process.exitCode = 2;
 }

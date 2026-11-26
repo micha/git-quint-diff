@@ -1,46 +1,34 @@
 # git-quint-diff
 
-Review what a change to a [Quint](https://quint.sh/) specification **adds or removes from its behavior**, not just what changed in the source. This is a standalone CLI project for terminal and CI use. A future `:QuintDiff` in [nvim-quint-viewer](https://github.com/micha/nvim-quint-viewer) can consume the same results.
+Review what two commits **add or remove from a Quint model's behavior**, not just what changed in the source. Git selects the model snapshots; the review selects the original scheduler calls, public histories, and observation. The CLI compares the **sets** of reachable outcomes and supplies a replayable witness for each addition or removal. It uses neither LLMs nor random simulation.
 
-**Status: experimental prototype and handoff, not the production implementation.** The CLI here compares two committed Git snapshots using a finite Quint review adapter. The [experiment record](docs/design-spiral.md) informed the [supported-scheduler contract](docs/supported-scheduler.md) and [black-box acceptance cases](docs/first-release-acceptance.md) for a fresh implementation. The prototype flags, adapters, and JSON are not commitments for that implementation.
+**Status:** Fresh implementation, first source-bound slice. It supports finite schedulers with direct calls in top-level alternatives. The [imported consensus scheduler](docs/first-release-acceptance.md#2-imported-consensus-scheduler) is the next milestone, not yet supported. The pure-adapter prototype and seven design experiments are archived at `prototype-handoff` (`064f97d`).
 
-## What a review looks like
+## Try it
 
-Suppose standard approval used to require a ticket and now also requires training. Start both revisions from the `new_user` scenario: an untrained member with no ticket or admin exception. Compare the same public action history in both revisions and observe standard approval at the end:
-
-| Initial scenario | Public action history | OLD | NEW |
-| --- | --- | --- | --- |
-| `new_user` | `obtain_ticket` | Approved | Denied |
-| `new_user` | `obtain_ticket → obtain_training` | No matching trace (`obtain_training` did not exist) | Approved |
-
-The ticket-only route to approval was removed; a ticket-plus-training route was added. A missing trace is not a denial or an execution error. Each row should have replayable evidence, with the shortest examples first. The CLI is deterministic and does not use LLMs at any stage, including when generating reports.
-
-## Try the prototype
-
-From this checkout, run `nix develop`. In that shell, put this checkout on `PATH`, then switch to a repository whose two revisions both contain a [review adapter](docs/prototype.md):
+Run `nix develop` from this checkout to get the pinned Quint, Apalache/TLC, and Java tools. Then, still in this checkout:
 
 ```sh
-export PATH="$PWD:$PATH" # while still in the git-quint-diff checkout
-cd /path/to/model-repo
-git quint-diff --model models/review.qnt --scenario new_user \
-  --action obtain_ticket --action obtain_training --max-depth 2 HEAD^ HEAD
+export PATH="$PWD:$PATH"
+review="$PWD/docs/source-review.example.json"
+scratch=$(mktemp -d)
+git archive prototype-handoff experiments/source_binding | tar -x -C "$scratch"
+python3 -B "$scratch/experiments/source_binding/make_fixture.py" "$scratch/repo"
+python3 -c 'import json, sys; r = json.load(open(sys.argv[1])); r["new"] = r["old"]; print(json.dumps(r))' \
+  "$review" > "$scratch/self.json"
+cd "$scratch/repo"
+git quint-diff --review "$scratch/self.json" old old
+git quint-diff --review "$review" old changed
 ```
 
-Add `--json` for versioned output. The prototype always reports a depth bound; it does not claim equivalence beyond that bound. See [prototype usage and limits](docs/prototype.md).
+The self-comparison has no deltas. Then `old → changed` removes `3` and adds `4` for `[beta]`, with no delta for `[alpha]`. The example uses different mappings because the call sites moved. Add `--json` for a versioned report.
 
-## Proposed Git syntax
-
-```sh
-git quint-diff                   # index → saved working tree
-git quint-diff HEAD              # HEAD → saved working tree
-git quint-diff v1 v2             # v1 → v2
-git quint-diff main...feature    # merge base → feature
-```
-
-Git selects the snapshots; review options select the model, starting scenario, and public actions. Both the prototype and the planned first release are limited to the two-commit form; the other forms are deferred. Each side resolves its own imports from its own snapshot, so an unchanged entrypoint can still have different behavior. This is a Git subcommand, not a per-file `git diff` driver. Ordinary `git diff` stays as it is.
-
-The terminal view will label added (`+`) and removed (`−`) outcomes directly, with no `Findings` column. Versioned JSON will carry the same changes and search scope for automation. If exploration stops at a bound, the output will state the bound rather than imply equivalence. See the [comparison design and acceptance plan](docs/comparison-contract.md) for details.
+The tool reads only committed Git objects, including transitive imports. It reports exhaustive closure **only for the selected histories**; neither a failed binding nor an unfinished search is an empty outcome set. See [review syntax and current limits](docs/source-review.md), the [scheduler contract](docs/supported-scheduler.md), and the [acceptance plan](docs/first-release-acceptance.md).
 
 ## Develop
 
-Run `nix develop` for Git, Quint, Node.js, Python, and Java, with the Apalache distribution Quint uses to run TLC pinned in the shell. See the [Quint model and verification record](spec/README.md) for the checked fixtures and bounds. Run `nix develop --command python3 -B tests/replay.py -v` to replay the cases against the CLI on temporary Git repositories. See [AGENTS.md](AGENTS.md) for the comparison contract.
+```sh
+nix develop --command python3 -B -m unittest discover -s release-tests -v
+```
+
+The harness runs the new executable on disposable Git repositories. It reads fixture input from the archive tag and does not use prototype code as the program under test. See [the design record](docs/design-spiral.md) for the archive and independent checks.
