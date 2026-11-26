@@ -67,10 +67,10 @@ def load_model(dml, revision, directory):
     return path
 
 
-def compile_tla(quint, source, module, *, invariant=None):
+def compile_tla(quint, source, module, *, invariant=None, init="init", step="step"):
     args = [
-        str(quint), "compile", source.name, "--target", "tlaplus", "--init", "init",
-        "--step", "step", "--verbosity", "0", "--apalache-version", APALACHE_VERSION,
+        str(quint), "compile", source.name, "--target", "tlaplus", "--init", init,
+        "--step", step, "--verbosity", "0", "--apalache-version", APALACHE_VERSION,
         "--server-endpoint", os.environ.get("DML_TLC_ENDPOINT", "localhost:18822"),
     ]
     if invariant is not None:
@@ -193,9 +193,9 @@ def enumerate_outcomes(jar, directory, tla):
     return close_outcomes(jar, source, lambda seen: invariant(tla, seen), read_witness, HISTORIES)
 
 
-def backend_jar(quint):
-    if require_success(run([str(quint), "--version"]), "check Quint version").strip() != QUINT_VERSION.encode():
-        raise Incomplete(f"expected Quint {QUINT_VERSION}; the default prototype shell pins 0.33.1")
+def backend_jar(quint, version=QUINT_VERSION):
+    if require_success(run([str(quint), "--version"]), "check Quint version").strip() != version.encode():
+        raise Incomplete(f"expected Quint {version}; the default prototype shell pins 0.33.1")
     home = os.environ.get("QUINT_HOME")
     if not home:
         raise Incomplete("QUINT_HOME is not set; use the project's nix develop shell")

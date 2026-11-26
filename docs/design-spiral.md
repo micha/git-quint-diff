@@ -174,6 +174,63 @@ nix develop --command python3 -B -m unittest discover -s experiments/consensus -
 
 The live tests also rerun with both saved working-tree files invalid, check stable witness order, and require `incomplete` for missing snapshots or an unavailable backend. The original CLI is unchanged. The checker reuses the earlier limits: 120 seconds per invocation and 32 history/outcome pairs per side.
 
-## Next experiment: source-level bindings across revisions
+## Experiment 5: source-level bindings across revisions
 
-**Question:** Can a reviewer bind public labels to source-level call sites without depending on flattened names or compiler formatting, including when two call sites invoke the same definition? Try a model with two such sites and a revision that moves or renames one without changing its behavior. Check a no-delta control with explicitly mapped bindings, a real changed or removed call, and an ambiguous binding that must fail rather than silently choose. Verify that erasing the monitor recovers the original transitions in each revision; record what can be inferred and what requires a reviewer-supplied mapping.
+**Question:** Can a reviewer bind public labels to source-level call sites without depending on flattened names or compiler formatting, including when two call sites invoke the same definition?
+
+### Prediction (before running the comparison)
+
+Use a controlled three-commit Git fixture: OLD, a refactor that moves the two public branches and renames the scheduler and imported callee, and a change that alters only the `beta` branch's argument. Start at `x = 0`. A hidden preparation step can set `x` to `1` or `2`; both public branches can then call the same action with the same argument. Hide preparation and reset, select the single-call histories `alpha` and `beta`, and observe `x` immediately after the call. Compare OLD with itself first. In OLD and the refactor both labels should reach `{3}`; in the changed revision only `beta` should switch from `{3}` to `{4}`. Attributing calls by their state effects cannot distinguish the two OLD sites. A selector that names only their shared callee should fail as ambiguous, not guess by order. Check projected scheduler edges separately from the history comparison, before cutting paths at the selected call.
+
+### What the reviewer mapped
+
+[`make_fixture.py`](../experiments/source_binding/make_fixture.py) creates the commits from the [fixture sources](../experiments/source_binding/fixtures/). No upstream model was changed for this control. The explicit per-revision [bindings](../experiments/source_binding/bindings.json) point into `workflow.qnt` and identify the imported action by file, module and name:
+
+| Revision | Commit | Scheduler → callee | `alpha` line:column | `beta` line:column |
+| --- | --- | --- | --- | --- |
+| `old` | `0a5db49fffb644269f455207705dd59f71eb9933` | `step` → `marks::mark` | `12:28` | `14:28` |
+| `refactor` | `75325f79c4a62330c971d8dfab971cbc447f99b3` | `dispatch` → `marks::record` | `18:28` | `15:7` |
+| `changed` | `d627ef22313d7733711712168d82df02e60163f9` | `dispatch` → `marks::record` | `18:28` | `15:7` |
+
+[`source_bindings.py`](../experiments/source_binding/source_bindings.py) stages the exact entrypoint and import in separate directories, ignoring the saved working tree. It uses pinned Quint 0.33.1's parsed AST, source map and name-resolution table to check that each position is a call to the intended declaration. The source-layer edit wraps each original scheduler branch with one fresh tag assignment: `alpha`, `beta`, or `hidden`. The supported shape is a top-level `any` of `all` branches, with each selected call a direct conjunct of its branch. No guard or update is regenerated. The TLA+ checker uses the compiled entrypoints and monitor definitions; it does not match compiled call names or scheduler formatting. The history filter is separate from the tags and stops after the first public call.
+
+The resolver can say which declaration a given call invokes and where it occurs in one commit. It cannot establish that one occurrence means `alpha`, or that its identity survives a move: the reviewer provides that mapping independently for each side. AST IDs and source positions are not cross-revision keys. Since both OLD calls have the same guards and effect, even a swap would pass the OLD→refactor outcome check; verifying source provenance is necessary. Dropping `alpha`'s position leaves two candidates and reports `incomplete` before exploration. A stale position finds zero sites and mapping both labels to one branch also fails. These are binding failures, not removed behavior.
+
+### Observed results
+
+| Comparison (in run order) | `alpha` OLD → NEW | `beta` OLD → NEW | Delta |
+| --- | --- | --- | --- |
+| OLD → OLD | `{3}` → `{3}` | `{3}` → `{3}` | None |
+| OLD → refactor | `{3}` → `{3}` | `{3}` → `{3}` | None |
+| OLD → changed | `{3}` → `{3}` | `{3}` → `{4}` | `beta`: `− 3`, `+ 4` |
+
+Each side closed in three TLC runs (two witnesses and one successful exhaustion pass: **7 generated, 5 distinct, 0 queued**). Both changed `beta` witnesses go from `x=0` through hidden `x=1` to the selected call; the model also permits `x=2` before that call. Rerunning with both saved source files invalid yielded identical structured output and witnesses. This is exhaustive for the two single-call histories and observation in the fixture, not a comparison of longer histories or arbitrary Quint schedulers.
+
+### Independent check and reproduction
+
+The [native oracle](../experiments/source_binding/native_oracle.py) loads committed sources independently, compiles the untagged and tagged models, and compares their full reachable graphs **without** the history filter. Erasing the tag preserves the initial state, reachable states and outgoing projected edges from **each** reachable tagged state. It also checks the tagged edge triples against hand-written expectations. Source tests separately remove the inserted wrappers and recover the original entrypoint byte for byte; the imported file was never edited.
+
+| Revision | Native generated / distinct / edges | Tagged generated / distinct / edges |
+| --- | --- | --- |
+| OLD and refactor (each) | 8 / 4 / 5 | 11 / 6 / 10 |
+| Changed | 9 / 5 / 8 | 11 / 6 / 10 |
+
+All six graph searches had one initial state and zero queued at closure. The projected native graph is unchanged by the refactor. The change makes `1→4`, `2→4` and the reset `4→0` reachable, while the `alpha` branch still reaches `3`. A negative control removes `0→2` only at initialization; the global projected edge union still agrees because that edge remains possible after reset, but the per-state check rejects it. Swapping the public tags in `changed` leaves the native edge relation intact but fails the tagged edge check. The separate checker paths and fixture results were cross-reviewed.
+
+```sh
+# Run in nix develop (Quint 0.33.1, Apalache 0.62.4/TLC).
+scratch=$(mktemp -d)
+python3 -B experiments/source_binding/make_fixture.py "$scratch/repo"
+for case in old refactor changed; do
+  python3 -B experiments/source_binding/source_bindings.py compare "$scratch/repo" "$case"
+  python3 -B experiments/source_binding/source_bindings.py stage "$scratch/repo" "$case" "$scratch/$case"
+  python3 -B experiments/source_binding/native_oracle.py "$scratch/repo" "$case" "$case" "$scratch/$case"
+done
+# Expected exit 1 and incomplete, with no deltas:
+python3 -B experiments/source_binding/source_bindings.py compare "$scratch/repo" refactor --ambiguous --json
+python3 -B -m unittest discover -s experiments/source_binding -v
+```
+
+## Next experiment: source bindings in a real imported scheduler
+
+**Question:** Does source-level tagging still preserve behavior when a real scheduler selects a nondeterministic action through nested `if` and `match` branches? Revisit the exact consensus revisions and scenario from Experiment 4. Bind `receiveMessages` at its source site in the imported scheduler and keep the existing round-to-label rule. Require the same complete outcome sets and replayable witnesses, independently check unfiltered scheduler projection, and report unsupported nesting as `incomplete` rather than copying guards or falling back to compiled names. Use that evidence to decide which scheduler constructs are worth supporting in the fresh implementation.
