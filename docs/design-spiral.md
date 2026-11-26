@@ -54,8 +54,46 @@ The oracle covers the predicted trace using the model's original `init` and `ste
 
 TLC reached each target at depth five including the initial state. The OLD, NEW mismatch, and NEW matching covers stopped with 482, 802, and 798 states queued, respectively. This confirms scheduler reachability, not absence of other outcomes across the state space. Inspecting the original `stage` and `publish` bodies explains the specific path: with the arguments and administrative steps fixed, the only new condition is factor equality. The arithmetic result is not used as evidence. These are checks of DML's finite design model, not replay of its native implementation or output from `git quint-diff`.
 
-### Next experiment: select existing actions directly
+## Experiment 2: select existing DML actions directly
 
 **Question:** Can a deterministic bounded checker reuse `init`, the scheduler transitions, the two public actions, and a state observation from both exact blobs, without rewriting the model's guards?
 
-Start with this same DML history and the matching-factor control on a Quint version that parses both revisions. Bind each public request to the existing action and its side-specific arguments; make the startup and event reset explicit in the evidence. Check the complete outcomes for the histories and bounds actually explored, report unsupported or incomplete work explicitly, and cross-check witness states against the independent model replay. This experiment should test whether action selection is enough here, not commit us to a production configuration format or a general rule for hiding internal steps.
+### What was selected
+
+[`direct_actions.py`](../experiments/dml/direct_actions.py) is a separate experiment, not a change to `git quint-diff`. It reads the same two committed blobs as Experiment 1 and writes each unchanged to an isolated temporary directory. Neither blob has transitive imports. A [generated Quint module](../experiments/dml/direct_actions_driver.py) imports the original model and selects:
+
+1. `init`, then `startReturn` in the worker phase;
+2. `stage(alternate)` when the scheduler is ready for a source operation;
+3. the original `step` when the stage report is present, forcing its event-clear branch;
+4. `publish(alternate, previousMain, …, false, 0)` when ready again. NEW uses `plannedFactor` (`3`) for the mismatch or `alternateFactor` (`−2`) for the control. OLD has no factor argument and calls the same action for either public request.
+
+The selection fixes scheduler branches and arguments; it does not copy the stage or publish guards. We checked both original schedulers admit these choices. The only added state is the wrapper's phase, which distinguishes the two histories even when their model states coincide.
+
+### How it checks complete sets
+
+Quint 0.34.0 compiles the wrapper to TLA+ using Apalache 0.62.4. TLC searches it with one worker and stops on a counterexample to “every end state has a previously witnessed `(history, observation)`.” Save the structured witness, extend the invariant to allow that pair, and repeat. The final pass must succeed and exhaust the search: a witness (even with zero queued states) is not a proof that no other outcome exists. The transition relation is the same in every pass; it is not filtered by previously seen observations. This requires no list of expected outcomes in advance. An unavailable tool, runtime failure, missing expected fixture path, timeout, or unclosed search reports `incomplete`, with no comparison claim.
+
+### Observed results
+
+| Selected public history | OLD outcomes | NEW outcomes | Delta |
+| --- | --- | --- | --- |
+| `stage_alternate → publish_alternate_expected_3` | `{(12, 12, 0)}` | `{(0, 3, 12)}` | `− (12, 12, 0)`; `+ (0, 3, 12)` |
+| `stage_alternate → publish_alternate_expected_minus_2` | `{(12, 12, 0)}` | `{(12, 12, 0)}` | None |
+
+The mismatch on NEW executes `publish` and leaves the whole source record unchanged. Both sides closed in three TLC runs (two witnesses and one exhaustive pass). The closing pass on each side had **6 generated, 6 distinct, 0 queued**, at depth 5 including `init`. The four witnesses agree with the independent original-scheduler covers above. We also checked that, after dropping the wrapper's phase, all original variables agree at each state along the selected scheduler paths.
+
+```sh
+# Use an absolute path to a Quint 0.34.0 executable; nix develop supplies Java and the pinned jar.
+nix develop --command python3 -B experiments/dml/direct_actions.py ../dml /path/to/quint-0.34.0
+# Add --json for the structured scope, outcome sets, and witnesses.
+DML_CHECKOUT=../dml DML_QUINT=/path/to/quint-0.34.0 \
+  nix develop --command python3 -B experiments/dml/test_direct_actions.py -v
+```
+
+The live checks repeat the review with invalid saved working-tree source, add a second outcome to one history in a temporary selector, and check that a missing expected path or a runtime error after a witness does not produce a delta. Those probes test the checker, not additional DML behavior. The checker limits each tool invocation to 120 seconds and each side to 32 different history/outcome pairs.
+
+**Scope:** This exhausts only two explicitly selected length-2 histories, each with four model transitions. It does not compare prefixes as separate histories, exhaust the original scheduler, or check the DML implementation. The two real DML histories each have one outcome per side; the extra outcome in the test is synthetic. Selecting the actions was enough here, but choosing the bindings and the scheduler context still required reading both revisions. The wrapper and compiler plumbing are not production interfaces.
+
+## Next experiment: a real nondeterministic review
+
+**Question:** Can direct action selection retain multiple real outcomes for one public history without requiring the reviewer to spell out the internal schedule? Pick an existing spec with genuine nondeterminism and an independently checkable revision that removes one of several outcomes. First compare it with itself, then review the change. Record how the binding identifies the public history, what internal steps it needs to allow, and whether the check preserves every reachable outcome. Defer the production interface until that evidence is in.
