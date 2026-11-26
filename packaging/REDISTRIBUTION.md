@@ -27,6 +27,16 @@ JDK release metadata. Keep both files with the matching wheel(s); do not offer a
 binary wheel for download without making the matching source materials
 available under the applicable terms (OpenJDK: GPL v2 with Classpath Exception).
 `build-wheel.py` specifies the `jlink` command used to assemble the image.
+
+The Temurin wheel image's `lib/security/cacerts` is derived from Mozilla's
+certificate data and is under [MPL-2.0](https://www.mozilla.org/MPL/2.0/).
+Obtain the Source Code Form from `security/certdata.txt` and the generation
+recipe in `security/README.md` inside the matching
+`temurin-build-8d9fd6fa96e5066571a13823b07c2934e5958d8b.tar.gz` companion, or
+from [that exact source revision](https://github.com/adoptium/temurin-build/tree/8d9fd6fa96e5066571a13823b07c2934e5958d8b/security).
+Keep that source available alongside the binary. This statement does not
+apply to the separate Nix JDK's trust store.
+
 The build emits the pinned Apalache 0.62.4 source and a filtered, matched
 [TLA+ Tools source companion](TLC-SOURCE.md) from commit `94d0c5070852`. The
 companion replaces the investigative `v1.8.0` archive and omits the raw
@@ -44,8 +54,13 @@ restores pinned notices for Logback, Servlet, Mail, LSP4J, Kiama, Jetty,
 Orbit Activation, TLC, and selected other components. Both builds can
 produce the same `jvm-priority-sources.tar` for the selected
 EPL/MPL dependencies, with exact input links and release-availability
-instructions in the installed guide. The Nix companion is a separate
-build target, not a dependency of the installed command.
+instructions in the installed guide. The Nix source target now also
+produces the same filtered TLA+ Tools tar, and both installs carry its
+rebuild recipe. Neither tar is a runtime dependency. Nix and the wheel
+carry the same pinned Quint, Sweet Monads, Undici Types and DefinitelyTyped
+notices, as well as the Node.js cumulative license and the separate
+nbytes license. They use different Node.js and Java derivations or binary
+inputs; matching these notices does not clear either platform's closure.
 
 ## Publication hold
 
@@ -54,9 +69,10 @@ and documentation; that license does not apply to bundled components. The
 [backend inventory](../docs/jvm-redistribution-audit.md) identifies the
 classes and supplying artifacts, not complete redistribution coverage.
 Complete the remaining notice and corresponding-source checks for
-retained resources, shaded components, and release companions. Confirm the
-conflicting source-tree and artifact notices for LSP4J before redistributing
-that bundle, and make the pinned companions available with the matching
+shaded components and [release companions](../docs/source-companion-audit.md).
+The [resource inventory](../docs/jvm-backend-resources.tsv) identifies the
+inputs, not rights in nested assets. Resolve the [LSP4J claims and Xbase
+attribution](../docs/lsp4j-license-evidence.md) before redistributing that bundle, and make the pinned companions available with the matching
 binaries before any public distribution. The
 [wheel payload audit](../docs/wheel-payload-audit.md) records local
 Node.js, npm and Temurin checks and the remaining host and closure work.

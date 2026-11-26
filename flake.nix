@@ -55,9 +55,22 @@
         let
           inherit (tools.${system}) pkgs quintPackage apalacheCache apalacheRuntime apalacheVersion;
           payloads = builtins.fromJSON (builtins.readFile ./packaging/payloads.json);
-          apalacheNotice = pkgs.fetchurl {
-            url = builtins.elemAt payloads.notice_files.Apalache-NOTICE 0;
-            sha256 = builtins.elemAt payloads.notice_files.Apalache-NOTICE 1;
+          runtimeNotices = pkgs.linkFarm "git-quint-diff-runtime-notices"
+            (pkgs.lib.mapAttrsToList (name: pin: {
+              inherit name;
+              path = pkgs.fetchurl {
+                url = builtins.elemAt pin 0;
+                sha256 = builtins.elemAt pin 1;
+              };
+            }) payloads.notice_files);
+          tlcRevision = payloads.tlc_source.revision;
+          tlcUpstream = pkgs.fetchurl {
+            url = "https://codeload.github.com/tlaplus/tlaplus/tar.gz/${tlcRevision}";
+            sha256 = payloads.tlc_source.upstream_sha256;
+          };
+          tlcPack = pkgs.lib.fileset.toSource {
+            root = ./packaging;
+            fileset = pkgs.lib.fileset.unions [ ./packaging/tlc_source.py ./packaging/payloads.json ];
           };
           jvmLegal = pkgs.lib.fileset.toSource {
             root = ./packaging;
@@ -70,10 +83,11 @@
               path = pkgs.fetchurl { inherit (pin) url sha256; };
             }) jvmSources.inputs);
         in {
-          # Build the same recipient source companion as the wheel, not a runtime dependency.
+          # Match the wheel's filtered JVM and TLC source tars without retaining them at runtime.
           jvm-source-companions = pkgs.runCommand "git-quint-diff-jvm-source-companions"
             { nativeBuildInputs = [ pkgs.python3 ]; } ''
               python3 -B ${jvmLegal}/jvm_legal.py pack ${sourceInputs} "$out"
+              python3 -B ${tlcPack}/tlc_source.py pack ${tlcUpstream} "$out/tlaplus-${tlcRevision}-source.tar"
             '';
           default = pkgs.stdenvNoCC.mkDerivation {
             pname = "git-quint-diff";
@@ -91,7 +105,10 @@
               install -Dm644 LICENSE "$legal/LICENSE"
               apalache=${apalacheCache}/apalache-dist-${apalacheVersion}/apalache
               install -m644 "$apalache/LICENSE" "$legal/Apalache-LICENSE"
-              install -m644 ${apalacheNotice} "$legal/Apalache-NOTICE"
+              for notice in ${runtimeNotices}/*; do
+                install -m644 "$notice" "$legal/$(basename "$notice")"
+              done
+              install -m644 ${./packaging/TLC-SOURCE.md} "$legal/TLC-SOURCE.md"
               python3 -B ${jvmLegal}/jvm_legal.py install "$legal/jvm"
               cp -r runtime "$out/libexec/git-quint-diff/"
               makeWrapper ${pkgs.nodejs}/bin/node "$out/bin/git-quint-diff" \

@@ -14,6 +14,7 @@ from zipfile import ZipFile
 PACKAGING = Path(__file__).resolve().parents[1] / "packaging"
 sys.path.insert(0, str(PACKAGING))
 import jvm_legal
+import tlc_source
 
 
 def check_directory(root, expected):
@@ -45,32 +46,41 @@ print(installed.locate_file(metadata).parent / 'licenses')
 """], text=True).strip())
     check_directory(pipx_legal / "jvm", expected)
     pins = json.loads((PACKAGING / "payloads.json").read_text(encoding="utf-8"))
-    notice_digest = pins["notice_files"]["Apalache-NOTICE"][1]
+    shared = {name: (nix_legal / name).read_bytes() for name in ("Apalache-LICENSE", *pins["notice_files"])}
+    shared["TLC-SOURCE.md"] = (PACKAGING / "TLC-SOURCE.md").read_bytes()
+    for name, (_, expected_digest) in pins["notice_files"].items():
+        with (nix_legal / name).open("rb") as stream:
+            jvm_legal.verify(stream, expected_digest, name)
     for root in (nix_legal, pipx_legal):
-        with (root / "Apalache-NOTICE").open("rb") as stream:
-            jvm_legal.verify(stream, notice_digest, "Apalache NOTICE")
-        if (root / "Apalache-LICENSE").read_bytes() != (nix_legal / "Apalache-LICENSE").read_bytes():
-            raise ValueError(f"different Apalache license: {root}")
+        for name, data in shared.items():
+            if (root / name).read_bytes() != data:
+                raise ValueError(f"different {name}: {root}")
 
     with ZipFile(args.wheel) as wheel:
-        (metadata,) = (name for name in wheel.namelist() if name.endswith(".dist-info/METADATA"))
+        names = wheel.namelist()
+        if len(names) != len(set(names)):
+            raise ValueError("duplicate members in wheel ZIP")
+        (metadata,) = (name for name in names if name.endswith(".dist-info/METADATA"))
         prefix = metadata.removesuffix("METADATA") + "licenses/"
-        members = [member for member in wheel.namelist() if member.startswith(prefix + "jvm/")]
+        members = [member for member in names if member.startswith(prefix + "jvm/")]
         if len(members) != len(expected) or {member.removeprefix(prefix + "jvm/"): wheel.read(member)
                                              for member in members} != expected:
             raise ValueError("missing, additional, or changed JVM materials in wheel ZIP")
         declared = BytesParser().parsebytes(wheel.read(metadata)).get_all("License-File") or []
         if sorted(name for name in declared if name.startswith("jvm/")) != sorted("jvm/" + name for name in expected):
             raise ValueError("wheel METADATA does not list the complete JVM notice bundle")
-        for name in ("Apalache-LICENSE", "Apalache-NOTICE"):
-            if wheel.read(prefix + name) != (nix_legal / name).read_bytes():
-                raise ValueError(f"different {name} in wheel ZIP")
+        for name, data in shared.items():
+            if declared.count(name) != 1 or wheel.read(prefix + name) != data:
+                raise ValueError(f"missing or different {name} in wheel ZIP")
 
     source_pin = jvm_legal.pin_file("sources.json")
     companion = source_pin["companion"]
+    tlc_pin = pins["tlc_source"]
     for folder in (args.nix_sources, args.wheel_sources):
-        with (folder / companion["file"]).open("rb") as stream:
-            jvm_legal.verify(stream, companion["sha256"], str(folder / companion["file"]))
+        for name, sha256 in ((companion["file"], companion["sha256"]),
+                             (tlc_source.companion_name(tlc_pin), tlc_pin["companion_sha256"])):
+            with (folder / name).open("rb") as stream:
+                jvm_legal.verify(stream, sha256, str(folder / name))
     with tarfile.open(args.nix_sources / companion["file"], mode="r:") as archive:
         expected_source_notices = {"jvm-priority-sources/" + name: data for name, data in notices.items()
                                    if name.split("/")[1] in source_pin["projects"]}
@@ -78,8 +88,9 @@ print(installed.locate_file(metadata).parent / 'licenses')
                                  if item.name.startswith("jvm-priority-sources/notices/")}
         if actual_source_notices != expected_source_notices:
             raise ValueError("source companion does not preserve notices for all its components")
-    print(f"Verified {len(notices)} verbatim JVM notices in Nix, pipx and the wheel; "
-          f"matching source companion {companion['sha256']}.")
+    print(f"Verified {len(notices)} verbatim JVM notices and shared materials in Nix, pipx and the wheel.\n"
+          f"Matching JVM priority companion: {companion['sha256']}\n"
+          f"Matching TLC companion: {tlc_pin['companion_sha256']}")
 
 
 if __name__ == "__main__":

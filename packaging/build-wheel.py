@@ -142,7 +142,6 @@ def stage(scratch, cache, target, pins):
     extract(fetch(cache, f"https://nodejs.org/dist/v{node_version}/{node_dir}.tar.xz",
                   pins["node"][node_target]), scratch)
     shutil.copy2(scratch / node_dir / "bin" / "node", payload / "node")
-    shutil.copyfile(scratch / node_dir / "LICENSE", licenses / "Node.js-LICENSE")
 
     java = pins["temurin"]
     version = java["version"]
@@ -175,7 +174,6 @@ def stage(scratch, cache, target, pins):
     quint = payload / "quint"
     copy_files(scratch / "package", quint)
     npm_lock(cache, quint, quint_src, scratch)
-    shutil.copyfile(quint_src / "LICENSE", licenses / "Quint-LICENSE")
 
     apalache = pins["apalache"]
     version = apalache["version"]
@@ -203,9 +201,17 @@ def stage(scratch, cache, target, pins):
     jvm_legal.pack({name: fetch(cache, item["url"], item["sha256"])
                     for name, item in source_pin["inputs"].items()}, sources[source_name], source_pin)
     jvm_legal.install(licenses / "jvm")
+    local_notices = {"Node.js-LICENSE": scratch / node_dir / "LICENSE", "Quint-LICENSE": quint_src / "LICENSE"}
     for name, (url, digest) in sorted(pins["notice_files"].items()):
-        shutil.copyfile(fetch(cache, url, digest), licenses / name)
-    shutil.copyfile(HERE / "REDISTRIBUTION.md", licenses / "REDISTRIBUTION.md")
+        if name in local_notices:
+            source = local_notices[name]
+            with source.open("rb") as stream:
+                jvm_legal.verify(stream, digest, name)
+        else:
+            source = fetch(cache, url, digest)
+        shutil.copyfile(source, licenses / name)
+    for name in ("REDISTRIBUTION.md", "TLC-SOURCE.md"):
+        shutil.copyfile(HERE / name, licenses / name)
     shutil.copyfile(HERE / "payloads.json", info / "payloads.json")
 
     tag = f"py3-none-{target}"

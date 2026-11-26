@@ -14,6 +14,11 @@ gRPC notices can refer to optional components not shipped here.
 
 ## Obtaining the source
 
+The same filtered TLA+ Tools source tar is available from the wheel build
+and the separate Nix source target. See [the TLC rebuild recipe](../TLC-SOURCE.md)
+for the exact archive name, checksum, and independent rebuild procedure.
+It does not supply source for any embedded dependency.
+
 For **Logback 1.5.32, Jakarta Servlet API 6.0.0, Jakarta Mail 1.6.8,
 LSP4J 0.21.1 and Kiama 2.5.1**, use `jvm-priority-sources.tar`. Its
 SHA-256, the exact upstream archives and the published source artifacts
@@ -49,7 +54,12 @@ Maven POM says EPL-2.0; the exact `jsonrpc` bundle's legacy `about.html`
 says EPL-1.0. Both declarations, their terms, and the exact sources are
 preserved. We do not select a BSD-only route or discard the artifact
 notice; confirm the terms for that bundle before public
-redistribution.
+redistribution. LSP4J debug also adapts Xbase's `ToStringBuilder` and
+`ToStringContext` (Copyright (c) 2014, 2018 itemis AG (http://www.itemis.eu)
+and others). See the upstream [Xbase notice](notices/xbase-lib-2.28.0/about_org.eclipse.xtext.xbase.lib.html)
+and the full [EPL-2.0 text](notices/logback-1.5.32/EPL-2.0.txt). The modified
+source is `org.eclipse.lsp4j.debug/src/main/java/org/eclipse/lsp4j/debug/util/ToStringBuilder.java`
+in the LSP4J tree in the companion. This does not mean the full Xbase library is installed.
 
 ## What's in the companion
 

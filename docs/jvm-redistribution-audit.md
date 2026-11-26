@@ -13,12 +13,13 @@ confirms this and, in several cases, did not preserve the supplying notices.
 **Keep the publication hold.** This is technical evidence and proposed
 release work, not a finding that any package can be published as-is.
 
-**Update after `0cbf05c`:** Both install forms now carry the pinned
+**Update after `bd059ba`:** Both install forms carry the pinned
 [JVM notices and source instructions](../packaging/jvm-legal/JVM-SOURCES.md).
-The wheel and separate Nix source build produce the same source-only
-companion for the five priority dependencies below. The audit table
-records why each was selected, not a claim that the remaining payload
-is cleared. The LSP4J declarations are preserved, not resolved.
+The separate Nix source target now emits both filtered tars that the
+wheel build emits (the five priority dependencies and TLC). The class
+inventory below and new resource audit are technical provenance, not
+license clearance. See the [exact LSP4J evidence](lsp4j-license-evidence.md)
+and the [archive audit](source-companion-audit.md) for remaining blockers.
 
 ## What the class comparison proves
 
@@ -124,12 +125,9 @@ checks before publishing to a public binary cache as well as to a wheel host.
   gRPC-Java's common license and notice for the three retained versions,
   the two Gson licenses, two protobuf licenses, and the separate
   uPickle and Geny licenses. See [the pinned manifest](../packaging/jvm-legal/notices.json).
-  Still map retained resources and shaded code (e.g. BooPickle in Izumi,
-  the particular JCTools subset in Netty, and Google common protos) to
-  their exact supplying notices and sources. Compare surviving Commons,
-  Jackson, SLF4J, Scala, Scalaz, Checker Qual, Jakarta Inject, Commons
-  Math and JLine notices against their exact upstream bytes before
-  declaring coverage.
+  See below for the checked surviving notices and several additional
+  attributions. An archive-level license or NOTICE does not inventory
+  every vendored or inherited source fragment.
 
 ### Source and notice pins
 
@@ -166,22 +164,59 @@ for Geny 1.1.1 use [its separate MIT `LICENSE`](https://raw.githubusercontent.co
 (`f8a443667d027fd656ab15ad601b7a12489f3f8bbe0ee528b558a0b7fd1863db`).
 A generic project MIT text does not preserve either copyright statement.
 
-## Limits and release gate
+## Retained non-class members
 
-This inventory covers class-member provenance for this backend digest. It
-is not a recursive audit of every file inside the source tarballs, embedded
-code within identified class members, or all non-class JAR resources.
-Apalache-added standard modules share the TLC `StandardModules/` path;
-attribute them to the supplying project, not by folder alone. The original
-JAR also carries a Windows `.lnk` file from TLC's `src/tla2sany/drivers/`;
-it is not compiled source and is intentionally absent from the source
-companion. Consider removing it in a separately pinned repack.
+[The resource inventory](jvm-backend-resources.tsv) accounts for all **318**
+non-directory, non-class JAR members by name and uncompressed SHA-256:
+**308 exact matches** (including notices renamed by the assembly), **eight
+service descriptors** reproduced by retaining distinct input lines in order
+and normalizing line endings, and **two generated members**. Of the eight,
+five each have a single input and three combine multiple inputs. The two
+generated entries are the Apalache main manifest and the empty Mail address
+map created by TLC's Ant `<touch>` task. A matching source proves it supplies
+the bytes, not that it was the only possible supplier of identical bytes.
 
-Finish the full preserved/required/missing notice inventory (including
-shaded code and non-class resources) and confirm the source delivery paths,
-then finish the [other payload checks](wheel-payload-audit.md) and validate both
-native install forms on the exact proposed release commit. Alternatively,
-remove demonstrably unnecessary dependencies with a separately scoped,
-byte-pinned repack and rerun the independent application/oracle checks. No
-runtime dependency removal or new scheduler capability was exercised by
-this audit.
+Run this check offline with the same Maven layout as above and the pinned
+*raw* Apalache and TLC source tarballs, not the filtered TLC companion:
+
+```sh
+python3 -B release-tests/backend_resources.py "$backend" \
+  --inputs "$maven_dir" "$apalache_raw" "$tlc_raw"
+```
+
+The check validates the cited input checksums and compares the actual
+members. Without `--inputs`, it checks the exact retained names and
+hashes; the development suite runs that check against the repacked JAR.
+The inventory distinguishes the 20 original TLC standard modules from 14
+Apalache modules under the same path. It confirms that the retained Commons,
+Jackson, SLF4J, Scala, Scalaz, Checker Qual and Jakarta Inject notices match
+the exact Maven inputs (including renamed copies); Commons Math and JLine
+match the notices checked into the matched TLC tree. The Jakarta Inject
+notice and source headers identify Apache-2.0, not EPL-only terms.
+
+## Embedded code and resource attribution
+
+| Retained material | Evidence and result |
+| --- | --- |
+| Google common protos | All 62 non-`google/protobuf` Google `.proto` files and 699 generated class members match `proto-google-common-protos:2.29.0`, not `protobuf-java`. The POM names `googleapis/sdk-platform-java`; both installs preserve the Apache-2.0 text from its `v2.29.0` commit `70da72f`, in addition to the notices already kept for protobuf and gRPC. |
+| JCTools in Netty | 91 relocated class members matched `netty-common:4.1.110.Final`. Netty's release POM pins `jctools-core:3.1.0`. All 72 relocated Java sources in Netty's published source JAR match that artifact's source JAR after undoing the namespace change (JCTools source JAR SHA-256 `64466540a8259a4632dfa7d5f70c079470f2288c7f8ceee97d28fc383d165d11`). Both installs keep Netty's JCTools notice and now the JCTools release's own `LICENSE`. |
+| BooPickle in Izumi | 65 classes match `izumi-reflect-thirdparty-boopickle-shaded_2.13:2.2.5`, and its 16 Scala files match the [Izumi release tree](https://github.com/zio/izumi-reflect/tree/36fa4b3747c968b93555fa42a1ea7d39fa3669f7). Both installs preserve Izumi's release `LICENSE`. This identifies the vendored fork as supplied; it does not trace the original BooPickle revision or all inherited attribution. |
+| FastDoubleParser and Schubfach in Jackson | The [Jackson 2.22.3 source-tree POM](https://github.com/FasterXML/jackson-core/blob/eee4b9e30d62dedf9c84beb6ae6e3c5ebf46920d/pom.xml) pins FastDoubleParser 2.0.1; 44 relocated classes are retained, including multi-release paths. The Jackson binary keeps `FastDoubleParser-LICENSE` and `FastDoubleParser-ThirdParty-LICENSE` byte for byte in the assembly; these are Jackson's expanded copies (including fast_float, fast_double_parser, and bigint terms), not identical files to those in the FastDoubleParser 2.0.1 source JAR (`6e8815541cf5123e1dac460946227f1bbb109e0570bbbc4c6a50067bd94b2c38`). Three Schubfach classes and their separate Jackson-supplied notice are also retained. This does not rebuild the relocated classes. |
+| Xbase in LSP4J debug | The [exact source comparison](lsp4j-license-evidence.md#xbase-code-retained-inside-debug) found upstream EPL-2.0 code adapted into the builder and its nested class. Both packages preserve the Xbase attribution separately, and the modified debug source is in the priority companion. This does not settle the `jsonrpc` artifact's contradictory EPL declarations. |
+
+The backend still ships Jetty's favicon and a Windows shortcut from TLC's
+`src/tla2sany/drivers/`; matching the supplying artifact or tree does not
+clear non-code rights. The shortcut is intentionally absent from the
+filtered TLC companion. This audit made **no backend changes**.
+
+## Remaining release gate
+
+Provenance is now inventoried for every retained JAR entry by class family
+or resource member, but not for every nested attribution. Resolve the
+[LSP4J/Xbase questions](lsp4j-license-evidence.md), confirm inherited code
+and non-code asset terms or omit unnecessary components with a separately
+pinned repack, and finish the [platform](wheel-payload-audit.md) and
+[companion](source-companion-audit.md) work. Run independent behavior and
+acceptance checks after any repack. Only validate for publication once
+both native jobs can test the exact proposed release commit and the
+matching source materials have a delivery path.

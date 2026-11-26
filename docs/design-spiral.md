@@ -105,6 +105,51 @@ From `0cbf05c`, restore the notices identified by the class audit. Predict that 
 
 On Linux arm64 with caller Git 2.43.0, development acceptance passed 40 tests (one expected skip), and installed acceptance outside the checkout with no system Node.js or Java passed 22 tests each for Nix and pipx (four expected skips each). Both packages kept the expected backend digest. The reviewers independently rebuilt the local wheel with SHA-256 `6bd3c29be263e26a6cab8b923acab2e1bf783100be63106d272ae68dafa17b0a`, verified its JVM materials, and confirmed its runtime was unchanged from the acceptance-tested wheel. Both final installs also passed the archived source-site regression. No native matrix or public distribution was performed for this milestone.
 
-### Next milestone: finish the redistribution audit
+## Release candidate: retained payload and source audit
 
-Keep the [publication hold](../packaging/REDISTRIBUTION.md#publication-hold). Map retained resources and shaded code to their exact inputs and notices, audit the remaining source companions and platform-specific wheel and Nix payloads, and confirm LSP4J's terms. Then rerun both native jobs on the exact release commit and match their artifact checksums before seeking publication approval. Do not expand scheduler scope or add working-tree comparisons before the release gate passes.
+**Question:** What do the binaries at `bd059ba` retain beyond the previously
+matched JVM classes, and which unresolved items would still stop release?
+We expected wheel/Nix JVM parity, but not parity between their Node and Java
+inputs, and expected raw source archives to carry additional files.
+
+- Two reviewers checked all 318 [retained non-class JAR entries](jvm-backend-resources.tsv)
+  against pinned input evidence (308 exact, eight service merges or
+  normalizations, two generated). The class replay still matches the same
+  99 Maven artifacts. Four new upstream notice files cover identified
+  JCTools, Izumi, Google common protos and the nested Xbase copy. Both
+  packages also preserve matching Node/nbytes and Quint/npm notices.
+- The [LSP4J check](lsp4j-license-evidence.md) found that the exact `jsonrpc`
+  about file predates the EPL migration and is also in the source JAR.
+  It also found copied Xbase EPL-2.0 code in `debug`, distinct from that
+  stale-looking notice. No exact-artifact clarification was obtained;
+  an EDL-only assumption is not supported.
+- The [host audit](wheel-payload-audit.md) adds an offline wheel comparator
+  checked against the local arm64 wheel and with negative controls. The
+  native Linux x86-64 and macOS arm64 **vendor inputs**, not their final
+  installs, were checked. Temurin's certificate set matched the companion
+  source; the Linux GCC notice and build evidence do not yet identify the
+  exact linked libgcc/libstdc++. The checked Nix arm64 closure has 65 paths
+  including the root, not a mirror of the wheel's runtime.
+- The wheel and separate Nix target now produce both identical filtered
+  source tars (`2145fed8…` for the priority set, `01a19bf1…` for TLC).
+  The [source archive audit](source-companion-audit.md) found unreviewed
+  raw companion assets and binary test fixtures. Neither tar is a runtime
+  dependency; the backend remains `1d2dab08…`.
+
+On Linux arm64 with caller Git 2.43.0, development passed 41 tests (one
+expected skip) and each installation passed 22 outside the checkout (four
+expected skips). The two reviewers independently built and checked the
+local wheel with SHA-256 `c071055e600f9efacebc9c68b3acffb57dde520ef91c2e34a935f43f9f101012`.
+It differed from the acceptance-tested wheel only in the redistribution
+notice and `RECORD`. The Nix runtime closure's referenced paths did not
+change. No new native matrix was run.
+
+**Next experiment:** Can a separately pinned backend remove the apparently unused
+LSP/debug and server components without losing translation, TLC exploration
+or error reporting? Test a candidate repack against the unmodified oracle
+and both installed acceptance suites before changing the package pin.
+If any LSP4J remains, seek clarification about the exact artifacts instead
+of dropping one of the notices. Resolve the remaining platform and archive
+source issues and then rerun the checksum-only native matrix on the exact
+candidate commit. Keep the [publication hold](../packaging/REDISTRIBUTION.md#publication-hold);
+no scheduler changes or publication were part of this iteration.

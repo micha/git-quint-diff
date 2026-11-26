@@ -33,6 +33,9 @@
   },
   "notice_files": {
     "Apalache-NOTICE": ["https://raw.githubusercontent.com/apalache-mc/apalache/v0.62.4/NOTICE", "787ac7de707fb7d6761946b8005153a03600f3187ee541dd12516872a7b96b79"],
+    "Node.js-LICENSE": ["https://raw.githubusercontent.com/nodejs/node/e63cab040c09d43ceef8cb35508c40044614e906/LICENSE", "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"],
+    "Node.js-nbytes-LICENSE": ["https://raw.githubusercontent.com/nodejs/node/e63cab040c09d43ceef8cb35508c40044614e906/deps/nbytes/LICENSE", "782ab5b8ae1540c1a2b102fdd00990ed268d4a3a98e90ad7fe724b489d7bb0f2"],
+    "Quint-LICENSE": ["https://raw.githubusercontent.com/quint-co/quint/3eaa85fc01820ea25bd7cb7baee0bb8d5c02c8b0/LICENSE", "0f8c4f9a99d4861ee62ade9a9526d09570844bdeab3e6bca500383d5ae7d9495"],
     "sweet-monads-LICENSE": ["https://raw.githubusercontent.com/JSMonk/sweet-monads/bde4474989df79601e4e5966d65f33fe29d0f6ce/LICENSE", "bb769f3e97342f15aa25b67fad736d1233b0c3c00086f139bccbc8a8fc68620a"],
     "undici-types-LICENSE": ["https://raw.githubusercontent.com/nodejs/undici/v5.26.5/LICENSE", "a6db8096b2707bc0102d256917d4d33f298ba36d8c3f25de067a2b5bb379db27"],
     "DefinitelyTyped-LICENSE": ["https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ca8d73dbc9d57342b5dfec6fa745e1509c7d03fe/LICENSE", "0a48f63d7d32a49d196dce4b2e0cbc236c2cc8fef42cb20e005e4d5f813cc8f6"]

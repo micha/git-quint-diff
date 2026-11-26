@@ -10,6 +10,8 @@ from unittest.mock import patch
 import warnings
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
+from backend_resources import check_origins, check_resources, digest, read_inventory
+
 
 PATH = Path(__file__).resolve().parents[1] / "packaging" / "repack-backend.py"
 SPEC = importlib.util.spec_from_file_location("repack_backend", PATH)
@@ -94,6 +96,22 @@ class BackendPayloadTest(unittest.TestCase):
                     self.repack_fixture(source, dst)
                 self.assertFalse(dst.exists())
 
+    def test_resource_checks_distinguish_merged_sources_and_changed_payload(self):
+        name = "META-INF/services/example.Provider"
+        data = b"example.One\nexample.Two\n"
+        row = digest(data), "distinct-lines", (("first", name), ("second", name))
+        rows = {name: row}
+        archive = self.make_jar([(name, data), ("example/One.class", b"ignored")])
+        self.assertEqual(check_resources(archive, rows), {name: data})
+        inputs = {"first": {name: b"example.One\r\n"}, "second": {name: b"example.Two\nexample.One"}}
+        check_origins({name: data}, rows, inputs)
+        with self.assertRaisesRegex(ValueError, "source evidence does not match"):
+            check_origins({name: data}, {name: (row[0], row[1], row[2][::-1])}, inputs)
+        with self.assertRaisesRegex(ValueError, "changed backend resource"):
+            check_resources(self.make_jar([(name, b"changed")]), rows)
+        with self.assertRaisesRegex(ValueError, "member inventory differs"):
+            check_resources(self.make_jar([(name, data), ("unexpected.txt", b"")]), rows)
+
     def test_duplicate_entry_is_rejected(self):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
@@ -112,6 +130,7 @@ class PinnedBackendPayloadTest(unittest.TestCase):
         with output.open("rb") as stream:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
         self.assertEqual(digest, "1d2dab08ca132c1d7cac2ca0cc3c1f743525b18a51aef3c5d97a4d549d30d5cd")
+        check_resources(output, read_inventory())
         with ZipFile(upstream) as original, ZipFile(output) as repacked:
             kept = set(repacked.namelist())
             self.assertEqual(len(kept), len(repacked.namelist()))

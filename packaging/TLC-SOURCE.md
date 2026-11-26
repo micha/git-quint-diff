@@ -3,10 +3,12 @@
 The Apalache 0.62.4 payload contains TLC built from TLA+ Tools revision
 [`94d0c5070852b37b801bb8998c436383ab7ee37b`](https://github.com/tlaplus/tlaplus/tree/94d0c5070852b37b801bb8998c436383ab7ee37b).
 Do not substitute the archive or JAR named `v1.8.0`: the later release asset
-has different class bytes. The wheel build produces
-`tlaplus-94d0c5070852b37b801bb8998c436383ab7ee37b-source.tar` (plain POSIX USTAR,
-SHA-256 `01a19bf1e82ffcb768371bcae287ce87bd2cad8fa0cdcad5d9e372c4c3a862ca`).
-Keep this companion and this rebuild recipe with any distribution of the backend.
+has different class bytes. The wheel build and `nix build .#jvm-source-companions`
+produce `tlaplus-94d0c5070852b37b801bb8998c436383ab7ee37b-source.tar`
+(plain POSIX USTAR, SHA-256 `01a19bf1e82ffcb768371bcae287ce87bd2cad8fa0cdcad5d9e372c4c3a862ca`).
+Use the source checkout of the exact candidate revision to obtain
+`packaging/tlc_source.py` and its pins. Keep this companion and rebuild
+recipe with any distribution of the backend.
 
 The companion copies the matching Tools source, parser grammar, resources,
 Ant files, the helper test sources needed for the shipped classes, and notices.

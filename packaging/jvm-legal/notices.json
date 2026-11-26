@@ -11,6 +11,15 @@
       ]
     },
     {
+      "path": "notices/google-common-protos-2.29.0/LICENSE",
+      "sha256": "3a6656847b7161442c07ae040962954bea2dc8bd691e87416790af65f1999a77",
+      "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/googleapis/sdk-platform-java/70da72f472579b880be54fd5334e1f97e736df32/LICENSE"
+        }
+      ]
+    },
+    {
       "path": "notices/grpc-java/LICENSE",
       "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
       "sources": [
@@ -59,6 +68,24 @@
           "url": "https://codeload.github.com/google/gson/tar.gz/3ff35d6269894901ab8006258395aafc4b9765cd",
           "sha256": "3800cbef8127512c7ac627473b779f8b38e4dcf43e9112ee9a33b94fe623d067",
           "member": "gson-3ff35d6269894901ab8006258395aafc4b9765cd/gson/LICENSE"
+        }
+      ]
+    },
+    {
+      "path": "notices/izumi-reflect-2.2.5/LICENSE",
+      "sha256": "6cbd481ce4a0ba4f4ce4c231770c913642263d3356d887a78d21e3668b49a51a",
+      "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/zio/izumi-reflect/36fa4b3747c968b93555fa42a1ea7d39fa3669f7/LICENSE"
+        }
+      ]
+    },
+    {
+      "path": "notices/jctools-3.1.0/LICENSE",
+      "sha256": "cb5e8e7e5f4a3988e1063c142c60dc2df75605f4c46515e776e3aca6df976e14",
+      "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/JCTools/JCTools/8f268d5293dc4701f9637ff393bdce110b2c0603/LICENSE"
         }
       ]
     },
@@ -695,6 +722,17 @@
       "sources": [
         {
           "url": "https://raw.githubusercontent.com/lihaoyi/upickle/5d492e8418131aef9cefd731235d8df0e65a8d05/LICENSE"
+        }
+      ]
+    },
+    {
+      "path": "notices/xbase-lib-2.28.0/about_org.eclipse.xtext.xbase.lib.html",
+      "sha256": "ee66d2fb3b4c0d2ed2e7f698bc9ed4e3d6cf77fa5caf40ad03296125db1ac5f0",
+      "sources": [
+        {
+          "url": "https://repo.maven.apache.org/maven2/org/eclipse/xtext/org.eclipse.xtext.xbase.lib/2.28.0/org.eclipse.xtext.xbase.lib-2.28.0-sources.jar",
+          "sha256": "2b35e9ccd4308f605e213371bb26f458b6a84bbd1e3a13cecaac0eba607db69f",
+          "member": "about_org.eclipse.xtext.xbase.lib.html"
         }
       ]
     }
