@@ -39,8 +39,9 @@
       in
       {
         default = pkgs.mkShell {
-          packages = [ pkgs.git pkgs.jdk_headless quint ];
+          packages = [ pkgs.git pkgs.jdk_headless pkgs.nodejs pkgs.python3 quint ];
           QUINT_HOME = apalacheCache;
+          QUINT_DIFF_QUINT_PACKAGE = "${quint}/lib/node_modules/@informalsystems/quint";
         };
       });
   };

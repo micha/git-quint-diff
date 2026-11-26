@@ -1,0 +1,119 @@
+#!/usr/bin/env node
+'use strict';
+
+const { parseArgs } = require('node:util');
+const { openSnapshot, repoPath } = require('./lib/snapshot.cjs');
+const { compileReview } = require('./lib/quint.cjs');
+const { checkHistoryBudget, compare } = require('./lib/compare.cjs');
+
+const usage = `Usage: git quint-diff --model PATH --scenario NAME --action LABEL [--action LABEL ...] --max-depth N [--json] OLD NEW
+
+Compare two committed Git revisions using a finite Quint review adapter.`;
+
+function options() {
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: {
+      model: { type: 'string' },
+      scenario: { type: 'string' },
+      action: { type: 'string', multiple: true },
+      'max-depth': { type: 'string' },
+      json: { type: 'boolean' },
+      help: { type: 'boolean', short: 'h' },
+    },
+  });
+  if (values.help) return { help: true };
+  if (!values.model || !values.scenario || !values.action?.length || values.action.some(label => !label)
+      || !/^\d+$/u.test(values['max-depth'] ?? '') || positionals.length !== 2) {
+    throw new Error('model, scenario, action(s), max-depth and two commit refs are required');
+  }
+  const maxDepth = Number(values['max-depth']);
+  if (maxDepth > 100) throw new Error('--max-depth must be from 0 to 100');
+  const model = repoPath('.', values.model);
+  if (!model.endsWith('.qnt')) throw new Error('--model must name a repository-relative .qnt file');
+  const actions = [...new Set(values.action)].sort();
+  checkHistoryBudget(actions, maxDepth);
+  return { model, scenario: values.scenario, actions, maxDepth, json: values.json, refs: positionals };
+}
+
+function render(report) {
+  const json = JSON.stringify;
+  const lines = [
+    `OLD ${report.old_revision ?? json(report.old_ref)}  NEW ${report.new_revision ?? json(report.new_ref)}`,
+    `Model ${json(report.model)} · Scenario ${json(report.scenario)} · Observe ${report.observation}`,
+    `Actions ${json(report.actions)} · Depth 0–${report.max_depth} · ${report.status} (${report.histories.length} histories checked)`,
+  ];
+  let changed = false;
+  for (const row of report.histories) {
+    if (!row.witnesses.length) continue;
+    changed = true;
+    lines.push(`\n${row.history.length ? row.history.map(label => json(label)).join(' → ') : '(empty history)'}`);
+    for (const side of ['old', 'new']) {
+      const { outcomes, stop } = row[side];
+      const noTrace = stop?.reason === 'missing_action' ? 'missing action' : 'disabled action';
+      lines.push(`  ${side.toUpperCase()} ${stop ? `no trace (${noTrace} at step ${stop.step})` : json(outcomes)}`);
+    }
+    for (const { side, outcome, states } of row.witnesses) {
+      lines.push(`  ${side === 'new' ? '+' : '−'} ${json(outcome)}  ${side.toUpperCase()} states ${json(states)}`);
+    }
+  }
+  if (!changed && !report.error) lines.push('\nNo added or removed outcomes within the checked bound.');
+  if (report.error) lines.push(`\nIncomplete: ${report.error}`);
+  return lines.join('\n');
+}
+
+function run(opts) {
+  const [oldRef, newRef] = opts.refs;
+  const report = {
+    schema_version: 1,
+    model: opts.model,
+    scenario: opts.scenario,
+    actions: opts.actions,
+    observation: 'review::observe',
+    max_depth: opts.maxDepth,
+    old_ref: oldRef,
+    new_ref: newRef,
+    old_revision: null,
+    new_revision: null,
+    status: 'bounded',
+    histories: [],
+  };
+  const onSnapshot = (side, ref, work) => {
+    try {
+      return work();
+    } catch (error) {
+      throw new Error(`${side} snapshot ${JSON.stringify(ref)}: ${error.message}`, { cause: error });
+    }
+  };
+  const resolve = (side, ref) => onSnapshot(side, ref, () => {
+    const snapshot = openSnapshot(ref);
+    report[`${side}_revision`] = snapshot.revision;
+    return snapshot;
+  });
+  // Diagnostics from the pinned Quint dependencies must not corrupt JSON stdout.
+  const { log, debug } = console;
+  console.log = console.debug = console.error;
+  try {
+    const oldSnapshot = resolve('old', oldRef);
+    const newSnapshot = resolve('new', newRef);
+    const old = onSnapshot('old', oldRef, () => compileReview(oldSnapshot, opts.model));
+    const fresh = onSnapshot('new', newRef, () => compileReview(newSnapshot, opts.model));
+    for (const row of compare(old, fresh, opts)) report.histories.push(row);
+  } catch (error) {
+    report.status = 'incomplete';
+    report.error = error.message;
+  } finally {
+    Object.assign(console, { log, debug });
+  }
+  process.stdout.write(`${opts.json ? JSON.stringify(report, null, 2) : render(report)}\n`);
+  return report.status === 'incomplete' ? 1 : 0;
+}
+
+try {
+  const opts = options();
+  if (opts.help) process.stdout.write(`${usage}\n`);
+  else process.exitCode = run(opts);
+} catch (error) {
+  console.error(`${error.message}\n\n${usage}`);
+  process.exitCode = 2;
+}
