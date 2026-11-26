@@ -7,7 +7,7 @@ Read [README.md](README.md) for the proposed CLI and approval example. This repo
 - Git selects OLD and NEW snapshots for the whole repository. Resolve each model's entrypoint and transitive imports inside that side's snapshot. Do not check out another branch or let an OLD import read working-tree source. The saved working tree is not an editor buffer.
 - Compare explicitly selected scenarios, public action histories, and observable outcomes. For each history, compare the **sets** of reachable outcomes from OLD and NEW. `NEW − OLD` is added behavior; `OLD − NEW` is removed. Arbitrary paired executions cannot establish a difference in nondeterministic models.
 - A missing action, a declared action that cannot take a step, and an observed denial are distinct. Report absence of a matching execution only when the search supports it. Never turn an evaluation failure, unsupported model, or incomplete search into an empty outcome set.
-- Use deterministic traversal and stable witness ordering, with shortest histories first. No LLM or random simulation is required. Expose the observation and search scope in both terminal and JSON output; distinguish exhaustive, bounded, and incomplete results. JSON will be a versioned interface, not a serialization of display strings.
+- Use deterministic traversal and stable witness ordering, with shortest histories first. Do not use LLMs anywhere in the CLI or use random simulation for comparison. Expose the observation and search scope in both terminal and JSON output; distinguish exhaustive, bounded, and incomplete results. Report factual additions and removals, with no `Findings` column. JSON will be a versioned interface, not a serialization of display strings.
 
 ## Start here: Quint first
 
