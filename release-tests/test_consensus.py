@@ -12,7 +12,9 @@ import unittest
 
 import test_cli as base
 from consensus_fixture import COMMITS, ENTRYPOINT, SCHEDULER, git, materialize
-from consensus_oracle import edge_call, native_graph, omissions, shortest, state_values
+from consensus_oracle import (
+    DECLARATION, HIDDEN, RECEIVE, check_call_site, edge_call, native_graph, replay_witness, shortest, state_values,
+)
 
 
 CONSTANTS = {"N": 3, "F": 1, "ACTUAL_FAULTS": 1, "K": 1, "MAX_ROUNDS": 2}
@@ -20,9 +22,6 @@ OBSERVE = "Procs.filter(p => procState.get(p).S.contains(Set())).size()"
 FIRST = "receive_round_1"
 SECOND = "receive_round_2"
 HISTORIES = [[FIRST], [FIRST, SECOND]]
-HIDDEN = {"stuttering": (243, 7), "crash": (246, 23), "sendMessages": (247, 22), "computeAction": (249, 24)}
-RECEIVE = {"path": SCHEDULER, "line": 248, "column": 30, "callee": "ConsensusAlg::receiveMessages"}
-DECLARATION = {"path": SCHEDULER, "module": "ConsensusAlg", "action": "receiveMessages", "line": 181, "column": 10}
 
 
 def side():
@@ -93,36 +92,15 @@ class ConsensusTest(unittest.TestCase):
     def assert_fields(self, value, expected):
         self.assertEqual({key: value[key] for key in expected}, expected)
 
-    def assert_call_site(self, site, call, label):
-        if label:
-            self.assertEqual(call, "receiveMessages")
-            self.assert_fields(site, RECEIVE | {"declaration": DECLARATION, "when": f"round == {label[-1]}"})
-        else:
-            line, column = HIDDEN[call]
-            self.assert_fields(site, {"path": SCHEDULER, "line": line, "column": column})
-
     def replay(self, witness, revision, scenario, history, outcome):
-        self.assert_fields(witness, {"revision": revision, "scenario": scenario, "history": history, "outcome": outcome})
         graph = self.native[revision]
-        state = state_values(witness["initial"])
-        self.assertIn(state, graph.initial, "witness does not replay through original init")
-        observed_history = []
-        for index, step in enumerate(witness["steps"], 1):
-            self.assertLess(len(observed_history), len(history), "witness goes beyond exact endpoint")
-            target = state_values(step["state"])
-            self.assertIn(target, graph.outgoing[state], f"witness does not replay through original step at frame {index}")
-            call, label = edge_call(state, target)
-            self.assertEqual(step["label"], label)
-            self.assert_call_site(step["site"], call, label)
-            if label is not None:
-                observed_history.append(label)
-            state = target
-        self.assertEqual(observed_history, history)
-        self.assertEqual(omissions(state), outcome)
+        replay_witness(graph, witness, revision=revision, scenario=scenario, history=history, outcome=outcome)
         self.assertEqual(len(witness["steps"]), shortest(graph, history)[outcome])
 
     def test_consensus_self_then_changed_and_reversed(self):
         old, new = COMMITS["old"], COMMITS["new"]
+        example = json.loads((base.ROOT / "docs/consensus-review.json").read_text(encoding="utf8"))
+        self.assertEqual(example, review())
         # Input order intentionally differs from the required reporting order.
         selected = review(HISTORIES[::-1])
         self.assert_rows(self.complete(old, old, selected), [([FIRST], [0], [0], []), (HISTORIES[1], [0], [0], [])])
@@ -138,7 +116,7 @@ class ConsensusTest(unittest.TestCase):
         field, = (k for k in frame if k == "procState" or k.endswith("_procState"))
         frame[field], replacements = re.subn(r"(\bx\s*\|->\s*)[123]\b", r"\g<1>9", frame[field], count=1)
         self.assertEqual(replacements, 1)
-        with self.assertRaisesRegex(AssertionError, "original step at frame 2"):
+        with self.assertRaisesRegex(ValueError, "original step at frame 2"):
             self.replay(malformed, new, selected["scenario"], [FIRST], 1)
 
         terminal = self.invoke(old, new, selected, machine=False)
@@ -242,4 +220,4 @@ class ConsensusTest(unittest.TestCase):
                         call, label = edge_call(source, target)
                         classified = augmented["sites"][target_tag]
                         self.assertEqual(classified["label"], label)
-                        self.assert_call_site(classified["site"], call, label)
+                        check_call_site(classified["site"], call, label)

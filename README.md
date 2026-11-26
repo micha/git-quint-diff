@@ -8,28 +8,12 @@ Review what two commits **add or remove from a Quint model's behavior**, not jus
 
 Both packages use **Git 2.43 or newer** from your `PATH`. You do not need to install Node.js, Java, or Quint separately.
 
-- **Nix:** Run `nix profile add .` in this checkout. For a published tag, use `nix profile add github:micha/git-quint-diff/<tag>` instead (replace `<tag>`).
-- **pipx:** Run `pipx install --pip-args=--no-index <wheel-url>` with the URL of the matching release wheel, or pass the path to a locally built wheel. The initial wheel targets are Linux x86-64 with glibc 2.28+ and Apple Silicon with macOS 13.5+. Pre-release builds have not been published.
-
-See [packaging and installed acceptance](docs/packaging.md) to build or verify a candidate.
+- **Nix:** From a supplied candidate checkout or unpacked source archive, follow the [source-first trial](docs/source-trial.md) to install in a disposable profile. No archived tag is needed.
+- **pipx:** A matching wheel can be built and installed locally; see [packaging and installed acceptance](docs/packaging.md). Public wheels are on hold.
 
 ## Try it
 
-With the command installed, run this example from the source checkout (Python 3 is used to create the example repository and review):
-
-```sh
-review="$PWD/docs/source-review.example.json"
-scratch=$(mktemp -d)
-git archive prototype-handoff experiments/source_binding | tar -x -C "$scratch"
-python3 -B "$scratch/experiments/source_binding/make_fixture.py" "$scratch/repo"
-python3 -c 'import json, sys; r = json.load(open(sys.argv[1])); r["new"] = r["old"]; print(json.dumps(r))' \
-  "$review" > "$scratch/self.json"
-cd "$scratch/repo"
-git quint-diff --review "$scratch/self.json" old old
-git quint-diff --review "$review" old changed
-```
-
-The self-comparison has no deltas. Then `old → changed` removes `3` and adds `4` for `[beta]`, with no delta for `[alpha]`. The example uses different mappings because the call sites moved. Add `--json` for a versioned report.
+The [source-first trial](docs/source-trial.md#2-review-two-real-quint-commits) compares two real upstream Quint commits. It shows how to fetch them, use the [ready-made review](docs/consensus-review.json), and replay the producing witnesses independently. The first receive adds outcomes `1` and `2`; the two-receive history has no delta. These values count process slots with a no-delivery marker, not consensus decisions.
 
 The tool reads only committed Git objects, including transitive imports. It reports exhaustive closure **only for the selected histories**; neither a failed binding nor an unfinished search is an empty outcome set. See [review syntax and current limits](docs/source-review.md), the [scheduler contract](docs/supported-scheduler.md), and the [acceptance plan](docs/first-release-acceptance.md).
 
@@ -39,7 +23,7 @@ The tool reads only committed Git objects, including transitive imports. It repo
 nix develop --command python3 -B -m unittest discover -s release-tests -v
 ```
 
-The harness runs the executable on disposable Git repositories, including offline reconstructions of the exact upstream consensus commits. It checks consensus outcomes and witnesses against an independently compiled native scheduler. See [the design record](docs/design-spiral.md) for the checks and prototype archive.
+The full harness needs a Git checkout containing the archived `prototype-handoff` commit. It runs the executable on disposable Git repositories, including offline reconstructions of the exact upstream consensus commits. It checks consensus outcomes and witnesses against an independently compiled native scheduler. See [the design record](docs/design-spiral.md) for the checks and prototype archive.
 
 ## License
 

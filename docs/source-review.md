@@ -1,6 +1,6 @@
 # Source-bound review
 
-Run `git quint-diff --review FILE [--json] OLD NEW` in the model repository. `OLD` and `NEW` are commit IDs or refs resolving to commits. This command does not implement index, working-tree, or merge-base syntax. The [example review](source-review.example.json) is paired with three known fixture commits; follow the [README](../README.md#try-it) to generate them.
+Run `git quint-diff --review FILE [--json] OLD NEW` in the model repository. `OLD` and `NEW` are commit IDs or refs resolving to commits. This command does not implement index, working-tree, or merge-base syntax. Try the [upstream consensus review](source-trial.md). The smaller [moved-call example](source-review.example.json) uses the fixture commits in [acceptance §1](first-release-acceptance.md#1-source-binding-identical-effects-moved-sites-literal-changes).
 
 ## Review file
 

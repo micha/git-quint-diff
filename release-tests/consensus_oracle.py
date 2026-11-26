@@ -25,6 +25,9 @@ QUOTED = r'"(?:\\.|[^"\\])*"'
 NODE = re.compile(rf'(-?\d+) \[label=({QUOTED}),(style = filled|tooltip={QUOTED})\];?')
 EDGE = re.compile(r'(-?\d+) -> (-?\d+) \[label="",color="black",fontcolor="black"\];')
 RANK = re.compile(r'\{rank = same; (?:-?\d+;)+}')
+HIDDEN = {"stuttering": (243, 7), "crash": (246, 23), "sendMessages": (247, 22), "computeAction": (249, 24)}
+RECEIVE = {"path": SCHEDULER, "line": 248, "column": 30, "callee": "ConsensusAlg::receiveMessages"}
+DECLARATION = {"path": SCHEDULER, "module": "ConsensusAlg", "action": "receiveMessages", "line": 181, "column": 10}
 
 
 @dataclass(frozen=True)
@@ -218,6 +221,43 @@ def edge_call(source, target):
 
 def omissions(state):
     return sum(frozenset() in proc["S"] for proc in state.procState)
+
+
+def check_call_site(site, call, label):
+    if label is None:
+        line, column = HIDDEN[call]
+        expected = {"path": SCHEDULER, "line": line, "column": column}
+    elif call == "receiveMessages":
+        expected = RECEIVE | {"declaration": DECLARATION, "when": f"round == {label[-1]}"}
+    else:
+        raise ValueError(f"unexpected public call {call}")
+    if any(site.get(key) != value for key, value in expected.items()):
+        raise ValueError(f"wrong source site for {label or call}")
+
+
+def replay_witness(graph, witness, *, revision, scenario, history, outcome):
+    expected = {"revision": revision, "scenario": scenario, "history": history, "outcome": outcome}
+    if type(witness.get("outcome")) is not int or any(witness.get(key) != value for key, value in expected.items()):
+        raise ValueError("witness does not identify the selected revision, scenario, history and outcome")
+    state = state_values(witness["initial"])
+    if state not in graph.initial:
+        raise ValueError("witness does not replay through original init")
+    observed_history = []
+    for index, step in enumerate(witness["steps"], 1):
+        if len(observed_history) == len(history):
+            raise ValueError("witness goes beyond exact endpoint")
+        target = state_values(step["state"])
+        if target not in graph.outgoing[state]:
+            raise ValueError(f"witness does not replay through original step at frame {index}")
+        call, label = edge_call(state, target)
+        if step["label"] != label:
+            raise ValueError(f"wrong public label at frame {index}")
+        check_call_site(step["site"], call, label)
+        if label is not None:
+            observed_history.append(label)
+        state = target
+    if observed_history != history or omissions(state) != outcome:
+        raise ValueError("witness does not produce the selected history and outcome")
 
 
 def shortest(native, history):

@@ -1,0 +1,52 @@
+{
+  "scenario": "consensus_two_rounds",
+  "histories": [["receive_round_1"], ["receive_round_1", "receive_round_2"]],
+  "old": {
+    "entrypoint": "examples/classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt",
+    "module": "KSetAgreementConsensus",
+    "constants": {"N": 3, "F": 1, "ACTUAL_FAULTS": 1, "K": 1, "MAX_ROUNDS": 2},
+    "init": "init",
+    "step": "step",
+    "observe": "Procs.filter(p => procState.get(p).S.contains(Set())).size()",
+    "bindings": {
+      "receive_round_1": {
+        "path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt",
+        "line": 248, "column": 30, "callee": "ConsensusAlg::receiveMessages", "when": "round == 1"
+      },
+      "receive_round_2": {
+        "path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt",
+        "line": 248, "column": 30, "callee": "ConsensusAlg::receiveMessages", "when": "round == 2"
+      }
+    },
+    "hidden": [
+      {"path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt", "line": 243, "column": 7},
+      {"path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt", "line": 246, "column": 23},
+      {"path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt", "line": 247, "column": 22},
+      {"path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt", "line": 249, "column": 24}
+    ]
+  },
+  "new": {
+    "entrypoint": "examples/classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt",
+    "module": "KSetAgreementConsensus",
+    "constants": {"N": 3, "F": 1, "ACTUAL_FAULTS": 1, "K": 1, "MAX_ROUNDS": 2},
+    "init": "init",
+    "step": "step",
+    "observe": "Procs.filter(p => procState.get(p).S.contains(Set())).size()",
+    "bindings": {
+      "receive_round_1": {
+        "path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt",
+        "line": 248, "column": 30, "callee": "ConsensusAlg::receiveMessages", "when": "round == 1"
+      },
+      "receive_round_2": {
+        "path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt",
+        "line": 248, "column": 30, "callee": "ConsensusAlg::receiveMessages", "when": "round == 2"
+      }
+    },
+    "hidden": [
+      {"path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt", "line": 243, "column": 7},
+      {"path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt", "line": 246, "column": 23},
+      {"path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt", "line": 247, "column": 22},
+      {"path": "examples/classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt", "line": 249, "column": 24}
+    ]
+  }
+}

@@ -144,12 +144,16 @@ It differed from the acceptance-tested wheel only in the redistribution
 notice and `RECORD`. The Nix runtime closure's referenced paths did not
 change. No new native matrix was run.
 
-**Next experiment:** Can a separately pinned backend remove the apparently unused
-LSP/debug and server components without losing translation, TLC exploration
-or error reporting? Test a candidate repack against the unmodified oracle
-and both installed acceptance suites before changing the package pin.
-If any LSP4J remains, seek clarification about the exact artifacts instead
-of dropping one of the notices. Resolve the remaining platform and archive
-source issues and then rerun the checksum-only native matrix on the exact
-candidate commit. Keep the [publication hold](../packaging/REDISTRIBUTION.md#publication-hold);
-no scheduler changes or publication were part of this iteration.
+Backend trimming and the remaining platform and archive source audits are deferred for the source-first trial. They still matter before publishing binaries: seek exact-artifact LSP4J clarification, verify any new repack against the native oracle and both installed suites, and rerun the checksum-only native matrix on the exact candidate. The [publication hold](../packaging/REDISTRIBUTION.md#publication-hold) remains in force.
+
+## Source-first trial: real review from an unpacked candidate
+
+**Question:** Can a reviewer go from a source-only candidate to a replayed witness without the project history, a wheel, or help from the maintainer?
+
+Two collaborators tried independent scratch copies of `abc9dccb159e53b66295d39c8f57267e1dfb53f3` on Linux arm64 (Git 2.43.0, Nix 2.35.6). Installing from a Git archive into a new profile worked; reading the README and following its old demo stopped at `git archive prototype-handoff` because the source archive had no Git history. The candidate was local; neither the public default branch nor the checksum-only validation branch supplied this revision. The [new guide](source-trial.md) starts with supplied candidate source and uses a checked-in review file, not the archived fixture. A literal guide run also caught Git intercepting `git quint-diff --help` for a man page; `git-quint-diff --help` works.
+
+Both collaborators fetched the actual upstream commits in [acceptance §2](first-release-acceptance.md#2-imported-consensus-scheduler), not the offline fixture. The predicted `{0}` on both histories in OLD self-comparison, `{0}` → `{0,1,2}` for round one and `{0}` → `{0}` for rounds one and two all held. The installed executable ran outside the source tree with a fresh HOME and a PATH containing only caller Git and the installed command. The forward terminal/JSON reports agreed: only `+ 1` and `+ 2`, each with three native transitions, and exhaustive closure in the selected scope (OLD 171 generated / 171 distinct; NEW 381 / 339; zero queued on both). The reverse and out-of-order history controls also agreed with the original scheduler.
+
+The guide's replay helper independently compiled NEW's original `init` and `step`, matched all seven state variables at every frame, and recomputed both outcomes. The second collaborator separately compiled both original graphs and used a different checker to reproduce the outcome sets, replay the forward and reverse witnesses, and reject changing a later proposal to `9`. The standalone helper also rejected that mutation. Both collaborators checked the guide in archive-style directories, and `nix build --rebuild --no-link .` matched the existing Nix output from the unpacked source. With the historical DML repo supplied, the development suite ran 42 tests: 41 passed and one installed-only case was skipped. No runtime, scheduler support, packaging pins, or public artifacts changed.
+
+This was a **collaborator dry run**, not an outside-user session or a cold-store build. The next milestone is to hand one outside Quint user the exact source archive and guide and have them run it unaided on their machine. Record their time to the first independently replayed witness or their first concrete blocker. Keep public wheels and project binary caches on hold; resume packaging work only if the trial shows that source-first installation is the blocker.
