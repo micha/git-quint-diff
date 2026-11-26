@@ -288,8 +288,77 @@ python3 -B -m unittest discover -s experiments/consensus -p test_projection_orac
 
 The experiment does not establish support for arbitrary Quint `match`, `any`, or local bindings. It uses the parser and compiler from one pinned version, and the checker and oracle support only this fixed instance. The production CLI is unchanged.
 
-## Next experiment: source bindings under nondeterministic arguments
+## Experiment 7: source bindings under nondeterministic arguments
 
 **Question:** Can a source binding identify which requests an existing scheduler issued when a selected call's arguments come from local `nondet` bindings, without reimplementing the scheduler or reading an event report to identify the call?
 
-Revisit Experiment 3's DML revisions. Select the original `stage` and `publish` sites through their `any` branches and local bindings, not by post-state receipt or event fields. Preserve the report-free scheduling choices, and explicitly map OLD's single publish signature to the two reviewed factor requests. First reproduce the two OLD self outcomes `{0, 12}` per history; then require only `− 12` for factor `3`, with both outcomes retained for factor `−2`. Check the source-based results against the existing native DML evidence and measure the cost of validating erasure on that much larger graph. Use that result to decide whether argument binding belongs in the first fresh implementation or whether those scheduler shapes should initially report `incomplete`.
+### Prediction (before running the comparison)
+
+Revisit Experiment 3's DML pair (`819ac9d9c496bf652ea85af12b3369844df2b1e4` → `c540078318bf52313a33d856c7825d6b09566b17`, `tests/recorded_return_design.qnt`). Start at the original `init`. Bind `stage(alternate)` and ordinary `publish(alternate, previousMain, …, false, 0)` at their original `any` branches, using their local nondeterministic argument values, not an event report to identify calls. Map OLD's factorless request to both public factor labels, allow the same report-free scheduling choices as Experiment 3, exclude other operations, and observe the receipt immediately after the selected publish.
+
+Run OLD against itself first: expect `{0, 12}` for both histories on both sides, with no delta. Then expect only `− 12` for factor `3`, with both outcomes retained for factor `−2`. The OLD `12` witness should publish after stage and report reset; the OLD `0` witness can include an intervening write that makes the expected main stale. NEW should be able to report `0` for the factor mismatch even with main still current. Compare against Experiment 3's native evidence and measure the cost of independently checking erasure on the full unfiltered scheduler. Use that evidence to decide whether the first fresh implementation should support argument binding or report it as `incomplete`.
+
+### Binding inside the scheduler
+
+[`argument_bindings.py`](../experiments/dml/argument_bindings.py) stages the exact regular blob from each commit. Quint 0.34.0 resolves the `sourceStep` sites to the original `stage` and `publish` declarations:
+
+| Snapshot | `stage` site → declaration | `publish` site → declaration |
+| --- | --- | --- |
+| OLD | `154:5` → `119:10` | `159:5` → `129:10` |
+| NEW | `160:5` → `123:10` | `166:5` → `133:10` |
+
+The checker follows action positions inside `if`, `any`, and local `nondet … oneOf()` bodies. The tagged siblings of `step`, `workerStep`, and `sourceStep` use the original source slices. The tag assignment for a selected site is inside the very same local bindings as its original call. It tests the actual arguments (including `mode == 3` and `if (mode == 3) 0 else mode`), not a re-derived check on the mode or anything in the successor event. Removing the tag wrappers and restoring the two routing names recovers the three original predicates byte for byte. The original declarations are untouched.
+
+Every scheduler leaf is explicitly classified. The six tags distinguish hidden operations, selected stage, the two NEW publish variants, other operations, and the factorless OLD publish. Other stage/publish arguments and select/export/collect are not silently hidden. The history filter, separate from the unfiltered scheduler, maps the single OLD publish tag to either factor label without duplicating a native action. It reads only the tag to decide progress; `event.receipt` is read only as the observation. Unknown sites, duplicate selectors, and unsupported scheduler forms or argument expressions fail closed.
+
+### Observed results
+
+OLD self-comparison ran first and returned `{0, 12}` for each history on each side, with no delta. The changed comparison reproduced Experiment 3:
+
+| History (after `stage_alternate`) | OLD outcomes | NEW outcomes | Delta |
+| --- | --- | --- | --- |
+| `publish_alternate_expected_3` | `{0, 12}` | `{0}` | `− 12` |
+| `publish_alternate_expected_minus_2` | `{0, 12}` | `{0, 12}` | None |
+
+All four closing passes had **572 generated, 182 distinct, 0 queued**. Each OLD side used five TLC runs; changed NEW used four. A successful publication takes four original transitions; stale-main rejection takes five. NEW's factor-3 rejection takes four with main still at `3`. These are executions of `publish`, not blocked calls. The invalid saved working-tree control reproduced the same bindings, outcomes, and witness order. There is no transition bound; exhaustion is only for these two histories, their specified hidden sites, and the receipt observation, not for other requests or the DML implementation.
+
+### Independent check and reproduction
+
+[`source_projection_oracle.py`](../experiments/dml/source_projection_oracle.py) independently stages and compiles the unchanged commits and checks both native and tagged graphs without the history filter. It compares outgoing projected edges from every reachable tagged state, plus the initial and reachable state sets. The oracle uses the native successor event to verify each tag and independently derive the outcome sets and shortest witness lengths; the source binder does not use that event for call identity. Witness replay checks all four original variables (`returning`, `worker`, `source`, `event`) on each original `q_init` frame and `q_step` edge. Negative controls reject an edge loss that the global projection union would miss, an incorrect legacy tag with an unchanged native graph, and a reachable state on the wrong witness edge.
+
+Both revisions had one initial state, zero queued at closure, and search depth 28 including `init`. The native and tagged statistics agree in each revision:
+
+| Revision | Generated | Distinct | Unique edges | Native / tagged DOT bytes |
+| --- | ---: | ---: | ---: | ---: |
+| OLD | 1,269,121 | 611,528 | 1,263,248 | 779,023,468 / 803,484,767 |
+| NEW | 2,367,361 | 1,160,648 | 2,361,488 | 1,534,768,197 / 1,581,194,355 |
+
+The independent checker reproduced both outcome sets and shortest lengths and replayed **all 15 witnesses** (eight from self-comparison, seven from the change). The full graph check visited roughly 3,400 and 6,400 times the 182 distinct states in the scoped review on OLD and NEW respectively. The entire independent sweep took minutes per revision in the concurrent run. The checker retains the two typed graphs in memory, but only one DOT dump at a time (up to about 1.5 GiB on disk here). These are regression-check costs, not the costs of the scoped comparison.
+
+```sh
+# In nix develop. Supply Quint 0.34.0 separately; the shell default is 0.33.1.
+export DML_CHECKOUT=../dml DML_QUINT=/absolute/path/to/quint-0.34.0
+scratch=$(mktemp -d)
+driver=experiments/dml/argument_bindings.py
+oracle=experiments/dml/source_projection_oracle.py
+python3 -B "$driver" compare "$DML_CHECKOUT" "$DML_QUINT" --self --json > "$scratch/self.json"
+python3 -B "$driver" compare "$DML_CHECKOUT" "$DML_QUINT" --json > "$scratch/diff.json"
+for side in old new; do
+  python3 -B "$driver" stage "$DML_CHECKOUT" "$DML_QUINT" "$side" "$scratch/$side"
+done
+python3 -B "$oracle" "$DML_CHECKOUT" "$DML_QUINT" old "$scratch/old" \
+  --report "$scratch/self.json" --report "$scratch/diff.json"
+python3 -B "$oracle" "$DML_CHECKOUT" "$DML_QUINT" new "$scratch/new" --report "$scratch/diff.json"
+# Also run the full-graph check as an opt-in regression test. Use a scratch
+# directory with room for the graph; this takes minutes, not seconds.
+TMPDIR="$scratch" DML_FULL_PROJECTION=1 \
+  python3 -B -m unittest discover -s experiments/dml -p test_source_projection_oracle.py -v
+```
+
+## Next milestone: prepare the fresh implementation
+
+**Question:** What is the smallest source-bound comparison that an independent reviewer can reproduce without any of the experiment drivers?
+
+Write a handoff with a supported-shape contract and black-box acceptance cases before archiving the prototype. Scope the first implementation to two committed snapshots, side-local imports, explicit per-revision bindings to supported direct calls with no arguments or literal arguments, short selected histories, and replayable outcome witnesses. Use the source-binding controls and the imported consensus receive histories to check this slice. Keep unsupported binding, backend failures, and unfinished searches visibly `incomplete`. Do not carry over the experiment flags, schema, or source rewriting implementation by default.
+
+Defer general argument binding in the first slice. DML shows it can work without copying guards, but this experiment relies on pinned grammar and scope shapes, a mapping for every scheduler leaf, and an explicit old/new signature correspondence. Keep DML as both an initial fail-closed control and a later positive acceptance case. Full-graph erasure is an independent regression oracle, not a required pass of every review.
