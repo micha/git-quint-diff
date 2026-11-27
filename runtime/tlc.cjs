@@ -68,9 +68,9 @@ function prefixes(histories) {
 
 // This relation is also exercised before history filtering in the erasure
 // regression. Guards refer only to pre-state operators in the selected instance.
-function transition({ branch, id, when, unless }) {
+function transition({ branch, id, helper, when, unless }) {
   const guard = when ?? (unless?.length ? `~(${joinOr(unless)})` : null);
-  const call = `qdBranch${branch ?? id}`;
+  const call = helper ?? `qdBranch${branch ?? id}`;
   return guard ? `(${guard}) /\\ ${call}` : call;
 }
 

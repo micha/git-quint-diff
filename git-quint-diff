@@ -70,8 +70,9 @@ function reviewConfig(file) {
     require(isObject(side.bindings) && [...labels].every(label => Object.hasOwn(side.bindings, label)),
       `${name}: explicitly bind each requested label (use null for absence)`);
     for (const [label, selector] of Object.entries(side.bindings)) {
-      require(text(label) && (selector === null || (keys(selector, ['callee', 'path', 'line', 'column', 'when']) && text(selector.callee) &&
+      require(text(label) && (selector === null || (keys(selector, ['callee', 'path', 'line', 'column', 'when', 'args']) && text(selector.callee) &&
         (selector.when === undefined || text(selector.when)) && (selector.path === undefined || text(selector.path)) &&
+        (selector.args === undefined || (Array.isArray(selector.args) && selector.args.every(scalar))) &&
         (position(selector) || (selector.line === undefined && selector.column === undefined && selector.path === undefined)))),
       `${name}: invalid selector for ${label}`);
     }
@@ -223,7 +224,7 @@ function terminal(report) {
     if (data.scheduler) lines.push(`  Scheduler: ${data.scheduler.module}::${data.scheduler.action} at ${data.scheduler.path}:${data.scheduler.line}:${data.scheduler.column}`);
     else lines.push('  Requested selectors (not resolved):');
     for (const [label, site] of Object.entries(data.bindings)) {
-      lines.push(`  ${label}: ${!site ? 'absent (explicit)' : `${site.path ?? data.entrypoint}:${site.line ?? '?'}:${site.column ?? '?'} ${site.callee}${site.declaration ? ` → ${site.declaration.path}:${site.declaration.line}:${site.declaration.column}` : ''}${site.when ? ` when ${site.when} (pre-state)` : ''}`}`);
+      lines.push(`  ${label}: ${!site ? 'absent (explicit)' : `${site.path ?? data.entrypoint}:${site.line ?? '?'}:${site.column ?? '?'} ${site.callee}${site.declaration ? ` → ${site.declaration.path}:${site.declaration.line}:${site.declaration.column}` : ''}${site.when ? ` when ${site.when} (pre-state)` : ''}${site.args !== undefined ? ` with args ${JSON.stringify(site.args)}` : ''}`}`);
     }
     for (const site of data.hidden) lines.push(`  Hidden: ${site.path ?? data.entrypoint}:${site.line}:${site.column}`);
     if (data.closure) lines.push(`  Search: ${data.closure.generated} generated, ${data.closure.distinct} distinct, ${data.closure.queued} queued`);

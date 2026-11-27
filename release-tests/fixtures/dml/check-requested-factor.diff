@@ -1,0 +1,33 @@
+diff --git a/recorded_return_fixture.qnt b/recorded_return_fixture.qnt
+index 5760ebf..22861dd 100644
+--- a/recorded_return_fixture.qnt
++++ b/recorded_return_fixture.qnt
+@@ -45,14 +45,14 @@ module recorded_return_fixture {
+     }
+   }
+
+-  action publish(root: int, expectedMain: int, aliasesMain: bool, failAt: int): bool = {
+-    val validated = not(aliasesMain)
++  action publish(root: int, expectedMain: int, expectedFactor: int, aliasesMain: bool, failAt: int): bool = {
++    val validated = not(aliasesMain) and (if (root == alternate) alternateFactor else plannedFactor) == expectedFactor
+     val committed = validated and main == expectedMain and staged == root and failAt == 0
+     all {
+       main' = if (committed) root else main,
+       staged' = if (committed) absent else staged,
+       receipt' = if (committed) root else absent,
+-      event' = (2, root, expectedMain, 0, if (aliasesMain) 3 else failAt),
++      event' = (2, root, expectedMain, expectedFactor, if (aliasesMain) 3 else failAt),
+       returning' = returning
+     }
+   }
+@@ -64,8 +64,9 @@ module recorded_return_fixture {
+       stage(root),
+       nondet root = Set(planned, alternate).oneOf()
+       nondet expectedMain = Set(absent, previousMain, planned).oneOf()
++      nondet expectedFactor = Set(plannedFactor, alternateFactor).oneOf()
+       nondet mode = Set(0, 1, 2, 3).oneOf()
+-      publish(root, expectedMain, mode == 3, if (mode == 3) 0 else mode),
++      publish(root, expectedMain, expectedFactor, mode == 3, if (mode == 3) 0 else mode),
+       nondet target = Set(absent, previousMain, competingMain).oneOf()
+       all { main' = target, returning' = returning, staged' = staged, receipt' = receipt, event' = event }
+     }

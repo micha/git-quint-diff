@@ -33,6 +33,7 @@ def main():
     loader = unittest.TestLoader()
     tests = loader.discover(str(HERE), pattern="test_cli.py")
     tests.addTests(loader.discover(str(HERE), pattern="test_consensus.py"))
+    tests.addTests(loader.discover(str(HERE), pattern="test_dml.py"))
     return 0 if unittest.TextTestRunner(verbosity=2).run(tests).wasSuccessful() else 1
 
 

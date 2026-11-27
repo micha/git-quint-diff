@@ -59,15 +59,25 @@ Run self-comparison first. Require scoped exhaustive closure for both rows. As a
 
 The test helper `receiveMessage(Set())` with the same stage update can satisfy the **entire** before/after relation of a native all-delivery receive; the scheduler does not call the helper. Request a binding to that helper in `step` instead and require incomplete, not an inferred call or a no-change success. Separately mutate a witnessed proposal at a later frame to `9` without changing the claimed history or outcome. The independent replay checker must reject it; merely checking the reported label and count would accept it.
 
-## 3. DML deliberately out of scope
+## 3. DML-derived argument selection and historical parser failure
+
+### Finite derivative
+
+Use the [fixture and side-local review inputs](../release-tests/fixtures/dml/README.md) for OLD `d3525cc2f98964fa0a04949fb6736b3da03610f5` and NEW `fab07489fc91c6b447b6bd7d2b5bbd5541cae5b3`. These are reproducible scratch commits, not upstream DML revisions. The committed scheduler chooses a stage candidate and independently chooses the publish candidate, expected main, and failure mode. NEW also chooses an expected factor. Bind `stage_alternate` to `stage` with tuple `[12]`. For each factor, use a separate review and bind the corresponding publish label to `[12, 3, false, 0]` on OLD and `[12, 3, factor, false, 0]` on NEW. Only the handoff, report clearing, and main move are hidden. Observe `receipt` after the exact history.
+
+| Review | OLD outcomes | NEW outcomes | Deltas |
+| --- | --- | --- | --- |
+| OLD self, stage then expected `3` | `{0,12}` | `{0,12}` | None |
+| Forward, stage then expected `3` | `{0,12}` | `{0}` | `− 12` |
+| Forward, stage then expected `−2` | `{0,12}` | `{0,12}` | None |
+
+Stage alone returns `{12}` on both sides. Test reverse comparison for expected `3` and replay its `+ 12` as well as the forward removal against all five original variables. Confirm exact closure with the original freely chosen arguments; `0` is a publish receipt for rejection. Independently compile the original scheduler and compare its outgoing native projection from each reachable tagged state, not just an aggregate edge set. Check the arguments and label of each tagged edge against the fixture's native event, including all unmatched tuples, which must stay in the unfiltered scheduler but not in the review. The runtime may not use that event to bind a call. A separate, typechecked derivative from §1 uses a local `nondet` choice on just one `all` term: it exposes both outcomes without `args`, and exact distinct tuples at the same occurrence expose only their matching outcomes without bypassing the guard.
+
+### Exact upstream snapshots
 
 Use [DML](https://github.com/micha/dml) OLD `819ac9d9c496bf652ea85af12b3369844df2b1e4` and NEW `c540078318bf52313a33d856c7825d6b09566b17`, entrypoint `tests/recorded_return_design.qnt`, module `recorded_return_design`, original `init` and `step`. Attempt to select `stage(alternate)` then ordinary `publish(alternate, previousMain, …, false, 0)` with requested factors `3` and `−2`, under the public labels `stage_alternate → publish_alternate_expected_3` and `stage_alternate → publish_alternate_expected_minus_2`. Select the actual `sourceStep` calls: OLD stage `154:5`, publish `159:5`; NEW stage `160:5`, publish `166:5`. Observe `event.receipt`. OLD's factorless publish would have to correspond to both labels. The release need not represent this argument mapping in a review format: request bindings at the stated occurrences to exercise rejection. Do not replace call binding with matching the successor `event` report, fixing arbitrary local choices, or rewriting the scheduler.
 
-Expect **incomplete**, with a side and actionable unsupported-input diagnostic, no established outcome sets and no deltas. The historical blobs require Quint 0.34.0 to parse. If the release parser accepts them, require a binding failure for the unsupported routing/locally chosen arguments, not a successful empty search. If the release parser cannot parse the blobs, that result covers only parser failure.
-
-To isolate argument binding from syntax and routing, make a separate `changed` child by replacing the recovery call `record(4),` with `nondet destination = Set(3, 4).oneOf()` followed on the next line by `record(destination),`. Independently confirm it parses and typechecks with Quint 0.33.1. Compare `changed` to this derivative with the otherwise valid `beta` binding moved to `record(destination)`, and require an unsupported call/binding result.
-
-For a **later** slice, the [native DML checks][dml-record] establish `{0,12}` → `{0}` for factor `3` (only `− 12`) and `{0,12}` → `{0,12}` for `−2` when the original silent choices are retained. That is not a first-release positive, and its full-graph oracle is not part of every review.
+Expect **incomplete**, with a side and parse diagnostic, no established outcome sets and no deltas. The pinned Quint 0.33.1 parser rejects `observation` on OLD. This covers only parser failure. The original `step` also calls named routing actions, whose bodies are outside the current scheduler contract. The [archived native DML checks][dml-record] used Quint 0.34.0 and establish the expected sets for their original review scope; they do not establish that the current runtime can review those commits.
 
 ## 4. Git, exploration, and report failures
 

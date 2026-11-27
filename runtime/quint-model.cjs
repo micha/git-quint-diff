@@ -11,6 +11,10 @@ const fail = (phase, message) => { throw new ReviewError(phase, message); };
 const IDENT = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
 const OBS = 'qdObservation';
 const STEP = 'qdScheduler';
+const SCALAR_KINDS = ['int', 'str', 'bool'];
+const scalarKind = value => typeof value === 'number' ? 'int' : typeof value === 'string' ? 'str' : 'bool';
+const scalarNode = (id, value) => ({ id, kind: scalarKind(value), value: typeof value === 'number' ? BigInt(value) : value });
+const untranslatableString = /["\\\x00-\x1f\x7f\p{Surrogate}]/u;
 const INSTANCE = 'qdReview';
 const INIT = 'q::init'; // The public Quint init-to-predicate pass uses this entry name.
 
@@ -110,11 +114,7 @@ function parseModel(q, snap, config, { discovery = false } = {}) {
     // Construct typed scalar syntax directly: a JSON-escaped string does not
     // necessarily have the same value when read as a Quint source literal.
     const instance = selected.declarations[0];
-    instance.overrides = instance.overrides.map(([name, { id }]) => {
-      const value = values.get(name.name);
-      return [name, typeof value === 'number' ? { id, kind: 'int', value: BigInt(value) } :
-        { id, kind: typeof value === 'string' ? 'str' : 'bool', value }];
-    });
+    instance.overrides = instance.overrides.map(([name, { id }]) => [name, scalarNode(id, values.get(name.name))]);
     for (const [id, loc] of wrapper.sourceMap) parsed.sourceMap.set(id, loc);
     parsed.modules.push(selected);
   }
@@ -163,15 +163,47 @@ function parseModel(q, snap, config, { discovery = false } = {}) {
   const [errors, analysis] = q.analyzeModules(table, resolved.modules);
   check(errors, resolved.sourceMap, 'typecheck');
   const type = obs && analysis.types.get(obs.id)?.type?.kind;
-  if (obs && (!['int', 'str', 'bool'].includes(type) || !readOnly(analysis, obs))) {
+  if (obs && (!SCALAR_KINDS.includes(type) || !readOnly(analysis, obs))) {
     fail('observation', 'expected a read-only integer, string, or Boolean observation');
   }
   return { ids, resolved, location, scheduler, definitions, predicates, analysis, type, module: selected.name };
 }
 
 const opcode = (e, name) => e.kind === 'app' && e.opcode === name;
-const scalar = e => ['int', 'str', 'bool'].includes(e.kind) ||
+const scalar = e => SCALAR_KINDS.includes(e.kind) ||
   ((opcode(e, 'iuminus') || opcode(e, 'ineg')) && e.args.length === 1 && e.args[0].kind === 'int');
+const choice = e => e.kind === 'let' && e.opdef.qualifier === 'nondet' &&
+  opcode(e.opdef.expr, 'oneOf') && e.opdef.expr.args.length === 1;
+
+function throughChoices(expr) {
+  const locals = [];
+  while (choice(expr)) {
+    locals.push(expr.opdef.id);
+    expr = expr.expr;
+  }
+  return { expr, locals };
+}
+
+// Keep the leaf (including its binders) intact, even if it is selected as
+// hidden. A direct term may also have its own local choices within an all.
+function actionTerms(leaf) {
+  const scope = throughChoices(leaf);
+  const terms = opcode(scope.expr, 'actionAll') ? scope.expr.args : [scope.expr];
+  return terms.map(term => {
+    const { expr, locals } = throughChoices(term);
+    return { term, expr, locals: new Set([...scope.locals, ...locals]) };
+  });
+}
+
+// Only total forms over literals and the actual in-scope choice bindings.
+// Classification may evaluate an operand before calling the action, so do
+// not allow arbitrary expressions (including partial ones) here.
+function supportedArgument(expr, locals, table, types) {
+  return SCALAR_KINDS.includes(types.get(expr.id)?.type?.kind) && (
+    scalar(expr) || (expr.kind === 'name' && locals.has(table.get(expr.id)?.id)) ||
+    (((opcode(expr, 'eq') && expr.args.length === 2) || (opcode(expr, 'ite') && expr.args.length === 3)) &&
+      expr.args.every(arg => supportedArgument(arg, locals, table, types))));
+}
 const atPosition = (site, selector, entrypoint) => site.path === (selector.path ?? entrypoint) &&
   site.line === selector.line && site.column === selector.column;
 const readOnly = (analysis, expr) => {
@@ -237,13 +269,17 @@ function schedulerSites(model) {
   }
   const guardOrAssignment = term => opcode(term, 'assign') || readOnly(analysis, term);
   return branches.map(leaf => {
-    const terms = opcode(leaf.expr, 'actionAll') ? leaf.expr.args : [leaf.expr];
-    const direct = terms.map(directCall).filter(Boolean);
+    const terms = actionTerms(leaf.expr);
+    const direct = terms.flatMap(({ term, expr, locals }) => {
+      const call = directCall(expr);
+      return call ? [{ ...call, term, locals }] : [];
+    });
     const calls = [];
     collectCalls(leaf.expr, calls);
-    const expr = direct[0]?.expr;
-    const publicCall = direct.length === 1 && calls.length === 1 && !expr.args?.some(arg => !scalar(arg)) &&
-      terms.every(term => term === expr || guardOrAssignment(term)) ? direct[0] : null;
+    const candidate = direct[0];
+    const publicCall = direct.length === 1 && calls.length === 1 &&
+      (candidate.expr.args ?? []).every(arg => supportedArgument(arg, candidate.locals, resolved.table, analysis.types)) &&
+      terms.every(({ term }) => term === candidate.term || guardOrAssignment(term)) ? candidate : null;
     return { ...leaf, direct, calls, publicCall };
   });
 }
@@ -284,17 +320,31 @@ function bind(model, config) {
       }
       fail('binding', `${label}: ${candidates.length ? 'ambiguous' : 'no matching'} direct call site for ${selector.callee}`);
     }
-    const { leaf, site } = candidates[0];
+    const { leaf, site, expr } = candidates[0];
     if (!leaf.publicCall) {
-      fail('binding', `${label}: unsupported public leaf or arguments at ${describe(site)}; use one direct call with scalar literals`);
+      fail('binding', `${label}: unsupported public leaf or arguments at ${describe(site)}; expected one direct call with supported operands`);
     }
     const predicate = selector.when === undefined ? null : labelPredicate(model, label, selector.when);
-    if (leaf.cases.some(c => !predicate || !c.predicate || predicate.variable !== c.predicate.variable ||
-        predicate.name !== c.predicate.name || predicate.value === c.predicate.value)) {
-      fail('binding', `${label}: duplicate or conflicting selector at ${describe(site)}; shared sites need distinct literals of one variable`);
+    const args = selector.args;
+    if (args !== undefined) {
+      if (predicate) fail('binding', `${label}: use args or when, not both`);
+      const actual = expr.args ?? [];
+      if (args.length !== actual.length || args.some((value, i) =>
+        scalarKind(value) !== model.analysis.types.get(actual[i].id)?.type?.kind)) {
+        fail('binding', `${label}: args must match the arity and scalar operand types at ${describe(site)}`);
+      }
+      if (args.some(value => typeof value === 'string' && untranslatableString.test(value))) {
+        fail('compile', `${label}: argument selector string literal cannot be translated losslessly`);
+      }
     }
-    const resolvedSite = predicate ? { ...site, when: predicate.when } : site;
-    leaf.cases.push({ label, site: resolvedSite, predicate });
+    const disjoint = c => args !== undefined && c.args !== undefined ? args.some((value, i) => value !== c.args[i]) :
+      predicate && c.predicate && predicate.variable === c.predicate.variable && predicate.name === c.predicate.name &&
+      predicate.value !== c.predicate.value;
+    if (leaf.cases.some(c => !disjoint(c))) {
+      fail('binding', `${label}: duplicate or conflicting selector at ${describe(site)}; shared sites need distinct argument tuples or distinct literals of one variable`);
+    }
+    const resolvedSite = { ...site, ...(predicate && { when: predicate.when }), ...(args !== undefined && { args }) };
+    leaf.cases.push({ label, site: resolvedSite, predicate, args });
     return [label, resolvedSite];
   }));
   const hidden = config.hidden.map(selector => {
@@ -310,9 +360,13 @@ function bind(model, config) {
   const leaves = branches.flatMap((leaf, i) => {
     // Unlisted sites (or unmatched predicate values) retain their native edges
     // in the unfiltered relation, but aren't permitted in the history product.
-    const cases = leaf.cases.map(c => ({ label: c.label, site: c.site, when: c.predicate?.helper }));
-    if (!cases.length || cases.some(c => c.when)) cases.push({ site: leaf.site, unless: cases.map(c => c.when) });
-    return cases.map((c, j) => ({ ...c, branch: i + 1, id: j === 0 ? i + 1 : ++extra }));
+    const cases = leaf.cases.map(c => ({ label: c.label, site: c.site, when: c.predicate?.helper, args: c.args }));
+    if (cases[0]?.args !== undefined) cases.push({ site: leaf.site, otherArgs: cases.map(c => c.args) });
+    else if (!cases.length || cases.some(c => c.when)) cases.push({ site: leaf.site, unless: cases.map(c => c.when) });
+    return cases.map((c, j) => {
+      const id = j === 0 ? i + 1 : ++extra;
+      return { ...c, branch: i + 1, id, ...(c.args !== undefined || c.otherArgs ? { helper: `qdArgs${id}` } : {}) };
+    });
   });
   return { branches, leaves, bindings, hidden, scheduler: model.definitions.get(model.scheduler.id) };
 }
@@ -340,16 +394,18 @@ function compilation(q, model, binding) {
   const flatBranches = schedulerLeaves(flatStep.expr, flattenedAnalysis, model.location, true);
   const routeKey = JSON.stringify;
   if (flatBranches.length !== binding.branches.length) fail('compile', 'scheduler structure changed during Quint flattening');
-  flatBranches.forEach((leaf, i) => {
+  const flatCalls = flatBranches.map((leaf, i) => {
     const original = binding.branches[i];
     checkSource(leaf.expr, original.site);
     if (routeKey(leaf.route) !== routeKey(original.route)) fail('compile', 'scheduler route changed during Quint flattening');
     const site = original.cases[0]?.site;
-    if (site?.declaration) {
-      const terms = opcode(leaf.expr, 'actionAll') ? leaf.expr.args : [leaf.expr];
-      const call = terms.find(term => describe(model.location(term)) === describe(site));
-      checkSource(call && flattenedTable.get(call.id), site.declaration);
+    if (!site?.declaration) return null;
+    const call = actionTerms(leaf.expr).find(({ expr }) => describe(model.location(expr)) === describe(site));
+    checkSource(call && flattenedTable.get(call.expr.id), site.declaration);
+    if (!(call.expr.args ?? []).every(arg => supportedArgument(arg, call.locals, flattenedTable, flattenedAnalysis.types))) {
+      fail('compile', 'call operand scope changed during Quint flattening');
     }
+    return call.expr;
   });
   const disabled = term => {
     const id = ids.nextId();
@@ -359,25 +415,62 @@ function compilation(q, model, binding) {
   // Select an occurrence by specializing only branching positions. Reuse the
   // original typed conditions, scrutinee, lambdas and leaf; unselected arms
   // cannot step. The native scheduler is also compiled, unchanged.
-  const restrict = (expr, route, depth = 0) => {
-    if (depth === route.length) return expr;
+  const restrict = (expr, route, leaf, depth = 0) => {
+    if (depth === route.length) return leaf;
     const { op, i } = route[depth];
-    if (op === 'actionAny') return restrict(expr.args[i], route, depth + 1);
+    if (op === 'actionAny') return restrict(expr.args[i], route, leaf, depth + 1);
     if (op === 'ite') return { ...expr, args: expr.args.map((arg, j) =>
-      j === 0 ? arg : j === i ? restrict(arg, route, depth + 1) : disabled(arg)) };
+      j === 0 ? arg : j === i ? restrict(arg, route, leaf, depth + 1) : disabled(arg)) };
     return { ...expr, args: expr.args.map((arg, j) => j < 2 || j % 2 !== 0 ? arg :
-      { ...arg, expr: j === i ? restrict(arg.expr, route, depth + 1) : disabled(arg.expr) }) };
+      { ...arg, expr: j === i ? restrict(arg.expr, route, leaf, depth + 1) : disabled(arg.expr) }) };
   };
-  const helpers = flatBranches.map(({ route }, i) => {
-    const expr = restrict(flatStep.expr, route);
+  const helper = (name, expr) => {
     const id = ids.nextId();
     flattenedAnalysis.types.set(id, flattenedAnalysis.types.get(expr.id));
-    return { id, kind: 'def', name: `qdBranch${i + 1}`, qualifier: 'action', expr };
-  });
+    return { id, kind: 'def', name, qualifier: 'action', expr };
+  };
+  const helpers = flatBranches.map(({ route, expr }, i) => helper(`qdBranch${i + 1}`, restrict(flatStep.expr, route, expr)));
+
+  // Specialize a label case at the actual call position, beneath exactly the
+  // same lexical choices. Neither the choice domains nor the call operands
+  // are regenerated. The unmatched case is the complement at that position,
+  // not the negation of a separate existentially quantified branch.
+  const boolType = { type: { kind: 'bool' }, typeVariables: new Set(), rowVariables: new Set() };
+  const typed = (type, make) => {
+    const id = ids.nextId();
+    flattenedAnalysis.types.set(id, type);
+    return make(id);
+  };
+  const app = (opcode, args) => typed(boolType, id => ({ id, kind: 'app', opcode, args }));
+  const combine = (opcode, terms) => terms.length === 1 ? terms[0] : terms.length ? app(opcode, terms) :
+    typed(boolType, id => scalarNode(id, opcode === 'and'));
+  const equalsTuple = (call, tuple) => {
+    const args = call.args ?? [];
+    if (args.length !== tuple.length) fail('compile', 'call arity changed during Quint flattening');
+    return combine('and', args.map((arg, i) => {
+      const type = flattenedAnalysis.types.get(arg.id);
+      if (type?.type?.kind !== scalarKind(tuple[i])) fail('compile', 'call operand type changed during Quint flattening');
+      return app('eq', [arg, typed(type, id => scalarNode(id, tuple[i]))]);
+    }));
+  };
+  const guardCall = (expr, call, guard) => {
+    if (expr.id === call.id) return app('actionAll', [guard, expr]);
+    if (choice(expr)) return { ...expr, expr: guardCall(expr.expr, call, guard) };
+    if (opcode(expr, 'actionAll')) return { ...expr, args: expr.args.map(arg => guardCall(arg, call, guard)) };
+    return expr;
+  };
+  for (const leaf of binding.leaves.filter(l => l.helper)) {
+    const i = leaf.branch - 1;
+    const call = flatCalls[i];
+    const guard = leaf.args !== undefined ? equalsTuple(call, leaf.args) :
+      app('not', [combine('or', leaf.otherArgs.map(tuple => equalsTuple(call, tuple)))]);
+    const { route, expr } = flatBranches[i];
+    helpers.push(helper(leaf.helper, restrict(flatStep.expr, route, guardCall(expr, call, guard))));
+  }
   // The pinned TLA pretty-printer places string contents inside quotes without
   // escaping them. Reject literals that it cannot pass through losslessly.
   q.walkModule({ enterLiteral: expr => {
-    if (expr.kind === 'str' && /["\\\x00-\x1f\x7f\p{Surrogate}]/u.test(expr.value)) {
+    if (expr.kind === 'str' && untranslatableString.test(expr.value)) {
       fail('compile', `${describe(model.location(expr))}: string literal cannot be translated losslessly`);
     }
   } }, native);

@@ -358,6 +358,9 @@ class CliTest(FixtureCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         calls = [row["call"]["selector"] for row in json.loads(result.stdout)["leaves"] if row["call"]]
         self.assertEqual(calls, [self.side(child, "changed")["bindings"]["alpha"] | {"path": "workflow.qnt"}])
+        unsupported = self.side(child, "changed", bindings={"beta": self.coordinates(child, "record(x + 2)")})
+        review = self.review("changed", child, histories=[["beta"]], new_side=unsupported)
+        self.incomplete("changed", child, review, "new", r"binding:.*beta.*unsupported public leaf or arguments")
         marks = (self.repo / "marks.qnt").read_text(encoding="utf8")
         self.file("marks.qnt", "not Quint source\n")
         malformed = self.commit("Supply a malformed committed import")
@@ -734,13 +737,79 @@ class CliTest(FixtureCase):
         review = self.review(rev, rev, histories=[[]], old_side=side, new_side=unrepresentable)
         self.incomplete(rev, rev, review, "new", r"compile:.*string literal cannot be translated losslessly")
 
-    def test_local_nondeterministic_public_call_arguments_fail_closed(self):
+    def test_local_choice_in_a_guarded_all_preserves_choice_and_guards(self):
         self.replace("workflow.qnt", "record(4),", "nondet destination = Set(3, 4).oneOf()\n      record(destination),")
         self.typecheck()
         child = self.commit("Nondeterministically pick the recovery argument in the scheduler")
-        calls = {"alpha": self.coordinates(child, "record(3)"), "beta": self.coordinates(child, "record(destination)")}
-        review = self.review("changed", child, new_side=self.side(child, "changed", bindings=calls))
-        self.incomplete("changed", child, review, "new", r"binding:.*beta.*unsupported")
+        side = self.side(child, "changed", bindings={"beta": self.coordinates(child, "record(destination)")})
+        beta = side["bindings"]["beta"]
+        discovery = self.invoke_discovery(child, "dispatch")
+        self.assertEqual(discovery.returncode, 0, discovery.stdout + discovery.stderr)
+        self.assertIn(beta | {"path": "workflow.qnt"},
+                      [row["call"]["selector"] for row in json.loads(discovery.stdout)["leaves"] if row["call"]])
+        review = self.review("changed", child, histories=[["beta"]], new_side=side)
+        report = self.complete("changed", child, review)
+        self.assert_rows(report, [(["beta"], [4], [3, 4], [("+", 3)])])
+        self.assertEqual([s["label"] for s in report["histories"][0]["deltas"][0]["witness"]["steps"]], [None, "beta"])
+        # Classify the same locally chosen call by its exact argument. An
+        # out-of-domain tuple is bound but never issued, not absent.
+        split = side | {"bindings": {label: beta | {"args": [n]} for label, n in (("three", 3), ("four", 4), ("five", 5))}}
+        histories = [["three", "four"], ["three"], ["four"], ["five"]]
+        selected = self.review(child, child, histories=histories, old_side=split, new_side=split)
+        report = self.complete(child, child, selected)
+        self.assert_rows(report, [(["five"], [], [], []), (["four"], [4], [4], []),
+                                  (["three"], [3], [3], []), (["three", "four"], [4], [4], [])])
+        self.assertEqual(report["histories"][0]["new"]["reason"], "disabled")
+        self.assertEqual(report["new"]["bindings"]["three"]["args"], [3])
+        for overrides, diagnostic in (({"args": []}, "arity"), ({"args": [True]}, "operand types"),
+                                      ({"args": [4]}, "conflicting selector"), ({}, "conflicting selector"),
+                                      ({"when": "x == 1"}, "conflicting selector"),
+                                      ({"args": [3], "when": "x == 1"}, "use args or when")):
+            with self.subTest(overrides=overrides):
+                test = selected | {"new": copy.deepcopy(split)}
+                test["new"]["bindings"]["three"] = beta | overrides
+                self.incomplete(child, child, test, "new", f"binding:.*{diagnostic}")
+        unprepared = split | {"hidden": split["hidden"][1:]}
+        selected = self.review(child, child, histories=[["three"]], old_side=unprepared, new_side=unprepared)
+        self.assert_rows(self.complete(child, child, selected), [(["three"], [], [], [])])
+
+    def test_exact_scalar_tuple_types_and_unsupported_structured_choice(self):
+        self.file("workflow.qnt", """module workflow {
+  var x: str
+  action init = x' = ""
+  action record(value: str): bool = x' = value
+  action finish = x' = "done"
+  action dispatch = any {
+    nondet text = Set("red", "blue").oneOf()
+    record(text),
+    finish,
+  }
+  action unsupported = {
+    nondet pair = Set((1, 2), (2, 1)).oneOf()
+    record(if (pair == (1, 2)) "red" else "blue")
+  }
+}
+""")
+        self.typecheck()
+        rev = self.commit("Choose exact strings and offer a separate unsupported structured operand")
+
+        def selector(fragment, action, args):
+            line, column = self.coordinates(rev, fragment)
+            return {"line": line, "column": column, "callee": f"workflow::{action}", "args": args}
+
+        side = {"entrypoint": "workflow.qnt", "module": "workflow", "init": "init", "step": "dispatch",
+                "observe": "x", "hidden": [], "bindings": {"red": selector("record(text),", "record", ["red"]),
+                                                              "finish": selector("finish,", "finish", [])}}
+        review = self.review(rev, rev, histories=[["red"], ["finish"]], old_side=side, new_side=side)
+        self.assert_rows(self.complete(rev, rev, review), [(["finish"], ["done"], ["done"], []), (["red"], ["red"], ["red"], [])])
+        bad_literal = side | {"bindings": side["bindings"] | {"red": selector("record(text),", "record", [r"red\n"])}}
+        self.incomplete(rev, rev, review | {"new": bad_literal}, "new", r"compile:.*string literal cannot be translated losslessly")
+        result = self.invoke_discovery(rev, "unsupported")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([row["call"] for row in json.loads(result.stdout)["leaves"]], [None])
+        unsupported = side | {"step": "unsupported", "bindings": {"red": selector("record(if", "record", ["red"])}}
+        review = self.review(rev, rev, histories=[["red"]], old_side=side, new_side=unsupported)
+        self.incomplete(rev, rev, review, "new", r"binding:.*unsupported public leaf or arguments")
 
     def test_reachable_observation_error_does_not_imply_removal(self):
         selected = [["beta"]]
