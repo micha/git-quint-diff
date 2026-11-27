@@ -42,7 +42,9 @@ const siteAt = (sourceMap, id) => {
   if (!loc) fail('binding', 'Quint did not supply a source location');
   return { path: loc.source, line: loc.start.line + 1, column: loc.start.col + 1 };
 };
+const position = ({ path, line, column }) => ({ path, line, column });
 const describe = ({ path, line, column }) => `${path}:${line}:${column}`;
+const withVia = (site, via) => via.length ? { ...site, via } : site;
 
 function parseModel(q, snap, config, { discovery = false } = {}) {
   const ids = q.newIdGenerator();
@@ -213,27 +215,35 @@ const readOnly = (analysis, expr) => {
 
 // Follow action positions only. A route records the actual indices (not a
 // computed condition or call name), and is reused after instance flattening.
-function schedulerLeaves(expr, analysis, location, flattened = false, route = []) {
-  const branch = (op, i, child) => schedulerLeaves(child, analysis, location, flattened, [...route, { op, i }]);
-  if (opcode(expr, 'actionAny')) return expr.args.flatMap((arg, i) => branch('actionAny', i, arg));
-  if (opcode(expr, 'ite')) {
-    if (expr.args.length !== 3 || !readOnly(analysis, expr.args[0])) {
-      fail('binding', `expected a read-only scheduler condition at ${describe(location(expr))}`);
+function schedulerLeaves(root, analysis, location, { flattened = false, follow } = {}) {
+  function walk(expr, route, via, active) {
+    const branch = (op, i, child) => walk(child, [...route, { op, i }], via, active);
+    if (opcode(expr, 'actionAny')) return expr.args.flatMap((arg, i) => branch('actionAny', i, arg));
+    if (opcode(expr, 'ite')) {
+      if (expr.args.length !== 3 || !readOnly(analysis, expr.args[0])) {
+        fail('binding', `expected a read-only scheduler condition at ${describe(location(expr))}`);
+      }
+      return [1, 2].flatMap(i => branch('ite', i, expr.args[i]));
     }
-    return [1, 2].flatMap(i => branch('ite', i, expr.args[i]));
+    if (opcode(expr, 'matchVariant')) {
+      const [value, ...arms] = expr.args;
+      const unit = type => type?.kind === 'tup' && (type.fields.kind === 'empty' ||
+        (type.fields.kind === 'row' && type.fields.fields.length === 0 && type.fields.other.kind === 'empty'));
+      if (!value || !readOnly(analysis, value) || !arms.length || arms.length % 2 !== 0 || arms.some((arm, i) => {
+        if (i % 2 === 0) return arm.kind !== 'str' || arm.value === '_';
+        return arm.kind !== 'lambda' || arm.params.length !== 1 || (!flattened && arm.params[0].name !== '_') ||
+          !unit(analysis.types.get(arm.id)?.type?.args?.[0]);
+      })) fail('binding', `unsupported scheduler match at ${describe(location(expr))}; expected payload-free arms`);
+      return arms.flatMap((arm, i) => i % 2 === 0 ? [] : branch('matchVariant', i + 1, arm.expr));
+    }
+    const next = follow?.(expr);
+    if (next) {
+      if (active.has(next.def.id)) fail('binding', `cyclic scheduler routing at ${describe(next.hop)}`);
+      return walk(next.def.expr, [...route, { op: 'routeCall' }], [...via, next.hop], new Set([...active, next.def.id]));
+    }
+    return [{ expr, route, via, site: withVia(location(expr), via), cases: [] }];
   }
-  if (opcode(expr, 'matchVariant')) {
-    const [value, ...arms] = expr.args;
-    const unit = type => type?.kind === 'tup' && (type.fields.kind === 'empty' ||
-      (type.fields.kind === 'row' && type.fields.fields.length === 0 && type.fields.other.kind === 'empty'));
-    if (!value || !readOnly(analysis, value) || !arms.length || arms.length % 2 !== 0 || arms.some((arm, i) => {
-      if (i % 2 === 0) return arm.kind !== 'str' || arm.value === '_';
-      return arm.kind !== 'lambda' || arm.params.length !== 1 || (!flattened && arm.params[0].name !== '_') ||
-        !unit(analysis.types.get(arm.id)?.type?.args?.[0]);
-    })) fail('binding', `unsupported scheduler match at ${describe(location(expr))}; expected payload-free arms`);
-    return arms.flatMap((arm, i) => i % 2 === 0 ? [] : branch('matchVariant', i + 1, arm.expr));
-  }
-  return [{ expr, route, site: location(expr), cases: [] }];
+  return walk(root, [], [], new Set());
 }
 
 function labelPredicate(model, label, when) {
@@ -250,16 +260,27 @@ function labelPredicate(model, label, when) {
   return { helper: def.name, variable: variable.id, name: lhs.name, value, when };
 }
 
-function schedulerSites(model) {
+function schedulerSites(model, routing) {
   const { location, scheduler, resolved, analysis, definitions } = model;
-  const branches = schedulerLeaves(scheduler.expr, analysis, location);
-  if (!branches.length) fail('binding', 'expected a nonempty scheduler');
+  const named = new Set(routing);
+  const reached = new Set();
   const directCall = expr => {
     if (expr.kind !== 'name' && expr.kind !== 'app') return null;
     const def = resolved.table.get(expr.id);
     const declaration = def && definitions.get(def.id);
-    return declaration && { expr, site: { ...location(expr), callee: `${declaration.module}::${declaration.action}`, declaration } };
+    return declaration && { expr, def, site: { ...location(expr), callee: `${declaration.module}::${declaration.action}`, declaration } };
   };
+  const follow = expr => {
+    const call = directCall(expr);
+    if (!call || !named.has(call.site.callee)) return null;
+    if (expr.kind !== 'name' || call.def.expr.kind === 'lambda') {
+      fail('binding', `expected a bare nullary routing action ${call.site.callee} at ${describe(call.site)}`);
+    }
+    reached.add(call.site.callee);
+    return { def: call.def, hop: call.site };
+  };
+  const branches = schedulerLeaves(scheduler.expr, analysis, location, { follow });
+  if (!branches.length) fail('binding', 'expected a nonempty scheduler');
   function collectCalls(expr, found) {
     const call = directCall(expr);
     if (call) found.push(call);
@@ -268,26 +289,40 @@ function schedulerSites(model) {
     for (const child of children) collectCalls(child, found);
   }
   const guardOrAssignment = term => opcode(term, 'assign') || readOnly(analysis, term);
-  return branches.map(leaf => {
+  const sites = branches.map(leaf => {
     const terms = actionTerms(leaf.expr);
     const direct = terms.flatMap(({ term, expr, locals }) => {
       const call = directCall(expr);
-      return call ? [{ ...call, term, locals }] : [];
+      return call ? [{ ...call, site: withVia(call.site, leaf.via), term, locals }] : [];
     });
-    const calls = [];
-    collectCalls(leaf.expr, calls);
+    const nested = [];
+    collectCalls(leaf.expr, nested);
+    for (const { site } of nested) {
+      if (named.has(site.callee)) {
+        fail('binding', `unsupported scheduler routing for ${site.callee} at ${describe(site)}; expected an entire action-position leaf`);
+      }
+    }
+    const calls = nested.map(c => ({ ...c, site: withVia(c.site, leaf.via) }));
     const candidate = direct[0];
     const publicCall = direct.length === 1 && calls.length === 1 &&
       (candidate.expr.args ?? []).every(arg => supportedArgument(arg, candidate.locals, resolved.table, analysis.types)) &&
       terms.every(({ term }) => term === candidate.term || guardOrAssignment(term)) ? candidate : null;
     return { ...leaf, direct, calls, publicCall };
   });
+  for (const name of named) {
+    if (!reached.has(name)) fail('binding', `no eligible scheduler routing call for ${name}`);
+  }
+  return sites;
 }
 
-function discover(model) {
-  const branches = schedulerSites(model);
+const viaPositions = site => (site.via ?? []).map(position);
+const atVia = (site, selector, entrypoint) => selector.via === undefined ||
+  (site.via?.length === selector.via.length && site.via.every((hop, i) => atPosition(hop, selector.via[i], entrypoint)));
+
+function discover(model, config) {
+  const branches = schedulerSites(model, config.routing);
   const counts = new Map();
-  const callKey = ({ path, line, column, callee }) => JSON.stringify([path, line, column, callee]);
+  const callKey = site => JSON.stringify([position(site), site.callee, viaPositions(site)]);
   for (const branch of branches) {
     for (const { site } of branch.direct) {
       const key = callKey(site);
@@ -297,22 +332,24 @@ function discover(model) {
   return {
     scheduler: model.definitions.get(model.scheduler.id),
     leaves: branches.map(branch => {
+      const via = viaPositions(branch.site);
+      const leaf = withVia(position(branch.site), via);
+      const evidence = branch.via.length ? { leaf, via: branch.via } : { leaf };
       const site = branch.publicCall?.site;
-      if (!site || counts.get(callKey(site)) !== 1) return { leaf: branch.site, call: null };
-      const { declaration, ...selector } = site;
-      return { leaf: branch.site, call: { selector, declaration } };
+      if (!site || counts.get(callKey(site)) !== 1) return { ...evidence, call: null };
+      return { ...evidence, call: { selector: withVia({ ...position(site), callee: site.callee }, via), declaration: site.declaration } };
     }),
   };
 }
 
 function bind(model, config) {
   const entrypoint = relative('.', config.entrypoint);
-  const branches = schedulerSites(model);
+  const branches = schedulerSites(model, config.routing);
   const direct = branches.flatMap(leaf => leaf.direct.map(c => ({ ...c, leaf })));
   const bindings = Object.fromEntries(Object.entries(config.bindings).map(([label, selector]) => {
     if (selector === null) return [label, null];
     const matches = c => c.site.callee === selector.callee &&
-      (selector.line === undefined || atPosition(c.site, selector, entrypoint));
+      (selector.line === undefined || atPosition(c.site, selector, entrypoint)) && atVia(c.site, selector, entrypoint);
     const candidates = direct.filter(matches);
     if (candidates.length !== 1) {
       if (!candidates.length && branches.some(l => l.calls.some(matches))) {
@@ -348,9 +385,9 @@ function bind(model, config) {
     return [label, resolvedSite];
   }));
   const hidden = config.hidden.map(selector => {
-    const candidates = branches.filter(leaf => atPosition(leaf.site, selector, entrypoint));
+    const candidates = branches.filter(({ site }) => atPosition(site, selector, entrypoint) && atVia(site, selector, entrypoint));
     if (candidates.length !== 1 || candidates[0].cases.length) {
-      fail('binding', `hidden selector ${selector.path ?? entrypoint}:${selector.line}:${selector.column} is missing or conflicts with another binding`);
+      fail('binding', `hidden selector ${selector.path ?? entrypoint}:${selector.line}:${selector.column} is missing, ambiguous, or conflicts with another binding`);
     }
     const leaf = candidates[0];
     leaf.cases.push({ label: null, site: leaf.site, predicate: null });
@@ -391,13 +428,25 @@ function compilation(q, model, binding) {
     }
   };
   checkSource(flatStep, binding.scheduler);
-  const flatBranches = schedulerLeaves(flatStep.expr, flattenedAnalysis, model.location, true);
+  const hops = new Map(binding.branches.flatMap(leaf => leaf.via.map(hop => [describe(hop), hop])));
+  const follow = expr => {
+    if (expr.kind !== 'name') return null;
+    const hop = hops.get(describe(model.location(expr)));
+    if (!hop) return null;
+    const def = flattenedTable.get(expr.id);
+    checkSource(def, hop.declaration);
+    if (!def.expr || def.expr.kind === 'lambda') fail('compile', 'routing action changed during Quint flattening');
+    return { def, hop };
+  };
+  const flatBranches = schedulerLeaves(flatStep.expr, flattenedAnalysis, model.location, { flattened: true, follow });
   const routeKey = JSON.stringify;
   if (flatBranches.length !== binding.branches.length) fail('compile', 'scheduler structure changed during Quint flattening');
   const flatCalls = flatBranches.map((leaf, i) => {
     const original = binding.branches[i];
     checkSource(leaf.expr, original.site);
-    if (routeKey(leaf.route) !== routeKey(original.route)) fail('compile', 'scheduler route changed during Quint flattening');
+    if (routeKey(leaf.route) !== routeKey(original.route) || routeKey(leaf.via) !== routeKey(original.via)) {
+      fail('compile', 'scheduler route changed during Quint flattening');
+    }
     const site = original.cases[0]?.site;
     if (!site?.declaration) return null;
     const call = actionTerms(leaf.expr).find(({ expr }) => describe(model.location(expr)) === describe(site));
@@ -414,10 +463,13 @@ function compilation(q, model, binding) {
   };
   // Select an occurrence by specializing only branching positions. Reuse the
   // original typed conditions, scrutinee, lambdas and leaf; unselected arms
-  // cannot step. The native scheduler is also compiled, unchanged.
+  // cannot step. At a validated bare nullary call, specialize its resolved
+  // body in place: there are no formal arguments or surrounding binders to
+  // substitute. The native scheduler is also compiled, unchanged.
   const restrict = (expr, route, leaf, depth = 0) => {
     if (depth === route.length) return leaf;
     const { op, i } = route[depth];
+    if (op === 'routeCall') return restrict(flattenedTable.get(expr.id).expr, route, leaf, depth + 1);
     if (op === 'actionAny') return restrict(expr.args[i], route, leaf, depth + 1);
     if (op === 'ite') return { ...expr, args: expr.args.map((arg, j) =>
       j === 0 ? arg : j === i ? restrict(arg, route, leaf, depth + 1) : disabled(arg)) };

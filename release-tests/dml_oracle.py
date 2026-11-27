@@ -25,7 +25,7 @@ PUBLISH = {3: "publish_alternate_expected_3", -2: "publish_alternate_expected_mi
 HIDDEN = {"startReturn", "clearEvent", "moveMain"}
 
 
-def site(kind, version, label=None, factor=3):
+def site(kind, version, label=None, factor=3, *, routed=False):
     """Manually checked, side-local coordinates; independent of discovery/binding."""
     line, column = {
         "startReturn": (60, 37), "clearEvent": (61, 32),
@@ -34,6 +34,9 @@ def site(kind, version, label=None, factor=3):
         "publish": ((68 if version == "old" else 69) if label else 65, 7),
     }[kind]
     position = {"path": ENTRYPOINT, "line": line, "column": column}
+    if routed and kind not in ("startReturn", "clearEvent"):
+        position["line"] += 3
+        position["via"] = [{k: hop[k] for k in ("path", "line", "column")} for hop in routing_hops(version)]
     if label is None:
         return position
     args = [12] if kind == "stage" else [12, 3, *([] if version == "old" else [factor]), False, 0]
@@ -41,8 +44,24 @@ def site(kind, version, label=None, factor=3):
 
 
 def declaration(kind):
-    return {"path": ENTRYPOINT, "module": MODULE, "line": {"stage": 38, "publish": 48, "step": 60}[kind],
-            "column": 10, "action": kind}
+    line = {"stage": 38, "publish": 48, "step": 60, "sourceStep": 64, "readyStep": 77}[kind]
+    return {"path": ENTRYPOINT, "module": MODULE, "line": line, "column": 10, "action": kind}
+
+
+def routing_hops(version):
+    """Coordinates of route occurrences and declarations in the committed derivative."""
+    calls = [("sourceStep", 62, 10)] if version == "old" else [("readyStep", 62, 10), ("sourceStep", 77, 22)]
+    return [{"path": ENTRYPOINT, "line": line, "column": column,
+             "callee": f"{MODULE}::{kind}", "declaration": declaration(kind)} for kind, line, column in calls]
+
+
+def resolved_site(kind, version, label=None, factor=3, *, routed=False):
+    expected = site(kind, version, label, factor, routed=routed)
+    if label is not None:
+        expected["declaration"] = declaration(kind)
+    if "via" in expected:
+        expected["via"] = routing_hops(version)
+    return expected
 
 
 def state_values(raw):
@@ -166,15 +185,15 @@ def shortest(graph, history, version, factor):
     return lengths
 
 
-def check_site(actual, kind, version, label, factor):
-    expected = site(kind, version, label, factor)
-    if label is not None:
-        expected["declaration"] = declaration(kind)
+def check_site(actual, kind, version, label, factor, *, routed):
+    expected = resolved_site(kind, version, label, factor, routed=routed)
+    if actual.get("via") != expected.get("via"):
+        raise ValueError(f"wrong routing provenance for {label or kind}")
     if any(actual.get(k) != v for k, v in expected.items()):
         raise ValueError(f"wrong source site for {label or kind}")
 
 
-def replay_witness(graph, witness, revision, history, outcome, version, factor):
+def replay_witness(graph, witness, revision, history, outcome, version, factor, *, routed=False):
     metadata = {"revision": revision, "scenario": SCENARIO, "history": history, "outcome": outcome}
     if any(witness.get(k) != v for k, v in metadata.items()):
         raise ValueError("DML witness has wrong scope or outcome")
@@ -191,7 +210,7 @@ def replay_witness(graph, witness, revision, history, outcome, version, factor):
         kind, label = edge_call(state, target, version, factor)
         if (label is None and kind not in HIDDEN) or step["label"] != label:
             raise ValueError(f"DML witness has wrong label at frame {i}")
-        check_site(step["site"], kind, version, label, factor)
+        check_site(step["site"], kind, version, label, factor, routed=routed)
         if label is not None:
             seen.append(label)
         state = target
@@ -199,7 +218,7 @@ def replay_witness(graph, witness, revision, history, outcome, version, factor):
         raise ValueError("DML witness does not produce its reported exact history and receipt")
 
 
-def verify_tagged(native, tracked, version, factor):
+def verify_tagged(native, tracked, version, factor, *, routed=False):
     states = {key: (state_values({k: v for k, v in row.items() if k != "qdSite"}), row["qdSite"])
               for key, row in tracked["states"].items()}
     if ({states[k] for k in tracked["initial"]} != {(s, "0") for s in native.initial}
@@ -215,4 +234,4 @@ def verify_tagged(native, tracked, version, factor):
             expected = {"label": label} if label is not None or kind in HIDDEN else {}
             if {k: v for k, v in classified.items() if k == "label"} != expected:
                 raise ValueError(f"wrong label for DML edge {kind} at tag {target_tag}")
-            check_site(classified["site"], kind, version, label, factor)
+            check_site(classified["site"], kind, version, label, factor, routed=routed)

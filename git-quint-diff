@@ -10,13 +10,17 @@ const tlc = require('./runtime/tlc.cjs');
 
 const SIDES = ['old', 'new'];
 const usage = 'Usage: git quint-diff --review FILE [--json] OLD NEW\n' +
-  '       git quint-diff --discover --entrypoint PATH --module MODULE --step ACTION [--json] REV';
+  '       git quint-diff --discover --entrypoint PATH --module MODULE --step ACTION [--route MODULE::ACTION]... [--json] REV';
 const isObject = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const text = x => typeof x === 'string' && x.trim() !== '';
 const actionName = x => text(x) && x.split('::').every(s => quint.IDENT.test(s));
 const positive = x => Number.isSafeInteger(x) && x > 0;
 const keys = (x, allowed) => isObject(x) && Object.keys(x).every(k => allowed.includes(k));
 const position = x => positive(x.line) && positive(x.column);
+const sourcePosition = x => keys(x, ['path', 'line', 'column']) && position(x) && (x.path === undefined || text(x.path));
+const via = x => x === undefined || (Array.isArray(x) && x.length > 0 && x.every(sourcePosition));
+const routing = x => x === undefined || (Array.isArray(x) && x.every(s => actionName(s) && s.includes('::')) &&
+  new Set(x).size === x.length);
 const scalar = x => typeof x === 'boolean' || typeof x === 'string' || Number.isSafeInteger(x);
 const historyKey = JSON.stringify;
 
@@ -30,7 +34,10 @@ function args(argv) {
     else if (options && arg === '--review' && !review && argv[i + 1]) review = argv[++i];
     else if (options && arg === '--discover' && !discover) discover = true;
     else if (options && arg === '--json' && !json) json = true;
-    else if (options && ['--entrypoint', '--module', '--step'].includes(arg)) {
+    else if (options && arg === '--route') {
+      if (!argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(`missing value for ${arg}`);
+      (source.routing ??= []).push(argv[++i]);
+    } else if (options && ['--entrypoint', '--module', '--step'].includes(arg)) {
       const key = arg.slice(2);
       if (Object.hasOwn(source, key)) throw new Error(`repeated option: ${arg}`);
       if (!argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(`missing value for ${arg}`);
@@ -43,6 +50,7 @@ function args(argv) {
         !quint.IDENT.test(source.module ?? '') || !actionName(source.step)) {
       throw new Error('--discover needs an entrypoint, module, scheduler step and one committed revision (no review file)');
     }
+    if (!routing(source.routing)) throw new Error('--route needs a distinct resolved MODULE::ACTION each time');
   } else if (!review || revisions.length !== 2 || Object.keys(source).length) {
     throw new Error('expected a review file and two committed revisions');
   }
@@ -60,24 +68,26 @@ function reviewConfig(file) {
   const labels = new Set(histories.flat());
   for (const name of SIDES) {
     const side = data[name];
-    require(keys(side, ['entrypoint', 'module', 'constants', 'init', 'step', 'observe', 'bindings', 'hidden']) &&
+    require(keys(side, ['entrypoint', 'module', 'constants', 'init', 'step', 'routing', 'observe', 'bindings', 'hidden']) &&
       text(side.entrypoint) && text(side.observe) && text(side.module) && quint.IDENT.test(side.module) &&
       ['init', 'step'].every(k => actionName(side[k])),
     `${name}: specify entrypoint, module, init, step and observe`);
+    require(routing(side.routing), `${name}: routing must list distinct resolved MODULE::ACTION names`);
     require(side.constants === undefined || (isObject(side.constants) &&
       Object.entries(side.constants).every(([k, v]) => quint.IDENT.test(k) && scalar(v))),
     `${name}: constants must map identifiers to scalar literals`);
     require(isObject(side.bindings) && [...labels].every(label => Object.hasOwn(side.bindings, label)),
       `${name}: explicitly bind each requested label (use null for absence)`);
     for (const [label, selector] of Object.entries(side.bindings)) {
-      require(text(label) && (selector === null || (keys(selector, ['callee', 'path', 'line', 'column', 'when', 'args']) && text(selector.callee) &&
+      require(text(label) && (selector === null || (keys(selector, ['callee', 'path', 'line', 'column', 'via', 'when', 'args']) &&
+        text(selector.callee) && via(selector.via) &&
         (selector.when === undefined || text(selector.when)) && (selector.path === undefined || text(selector.path)) &&
         (selector.args === undefined || (Array.isArray(selector.args) && selector.args.every(scalar))) &&
         (position(selector) || (selector.line === undefined && selector.column === undefined && selector.path === undefined)))),
       `${name}: invalid selector for ${label}`);
     }
-    require(Array.isArray(side.hidden) && side.hidden.every(h => keys(h, ['path', 'line', 'column']) && position(h) &&
-      (h.path === undefined || text(h.path))),
+    require(Array.isArray(side.hidden) && side.hidden.every(h => keys(h, ['path', 'line', 'column', 'via']) &&
+      via(h.via) && sourcePosition({ path: h.path, line: h.line, column: h.column })),
       `${name}: hidden must list leaf positions`);
   }
   data.histories.sort((a, b) => a.length - b.length || tlc.compare(historyKey(a), historyKey(b)));
@@ -186,23 +196,27 @@ function discover(config, requestedRevision) {
     phase = 'parse';
     const model = quint.parseModel(api, snap, config, { discovery: true });
     phase = 'binding';
-    Object.assign(report, quint.discover(model), { blobs: blobIds(snap), status: 'complete' });
+    Object.assign(report, quint.discover(model, config), { blobs: blobIds(snap), status: 'complete' });
   } catch (error) {
     report.diagnostics.push({ phase: error.phase ?? phase, message: error.message });
   }
   return report;
 }
 
+const loc = ({ path, line, column }, entrypoint) => `${path ?? entrypoint}:${line ?? '?'}:${column ?? '?'}`;
+const formatVia = (hops, entrypoint) => hops?.length ? ` via ${hops.map(hop =>
+  `${loc(hop, entrypoint)}${hop.callee ? ` ${hop.callee} → ${loc(hop.declaration)}` : ''}`).join('; ')}` : '';
+
 function discoveryTerminal(report) {
-  const loc = ({ path, line, column }) => `${path}:${line}:${column}`;
   const lines = [`Discovery: ${report.status}`, `Commit: ${report.revision ?? report.requestedRevision}`,
     `Entrypoint: ${report.entrypoint} (${report.module}, step ${report.step})`,
     'Scope: source positions only; no reachability or cross-revision mapping checked.'];
+  if (report.routing?.length) lines.push(`Routing: ${report.routing.join(', ')}`);
   if (report.scheduler) {
     const { module, action } = report.scheduler;
     lines.push(`Scheduler: ${module}::${action} at ${loc(report.scheduler)}`);
-    for (const { leaf, call } of report.leaves) {
-      lines.push(`  Leaf ${loc(leaf)}`, call ?
+    for (const { leaf, call, via } of report.leaves) {
+      lines.push(`  Leaf ${loc(leaf)}${formatVia(via, report.entrypoint)}`, call ?
         `    Call ${loc(call.selector)} ${call.selector.callee} → ${loc(call.declaration)}` :
         '    No supported public selector');
     }
@@ -221,12 +235,16 @@ function terminal(report) {
     lines.push(`${side.toUpperCase()} ${data.revision ?? data.requestedRevision}: ${data.entrypoint} (${data.module}, init ${data.init}, step ${data.step})`,
       `  Observe: ${data.observe}${data.observationType ? ` (${data.observationType})` : ''}`);
     if (data.constants !== undefined) lines.push(`  Constants: ${JSON.stringify(data.constants)}`);
-    if (data.scheduler) lines.push(`  Scheduler: ${data.scheduler.module}::${data.scheduler.action} at ${data.scheduler.path}:${data.scheduler.line}:${data.scheduler.column}`);
+    if (data.routing?.length) lines.push(`  Routing: ${data.routing.join(', ')}`);
+    if (data.scheduler) lines.push(`  Scheduler: ${data.scheduler.module}::${data.scheduler.action} at ${loc(data.scheduler)}`);
     else lines.push('  Requested selectors (not resolved):');
     for (const [label, site] of Object.entries(data.bindings)) {
-      lines.push(`  ${label}: ${!site ? 'absent (explicit)' : `${site.path ?? data.entrypoint}:${site.line ?? '?'}:${site.column ?? '?'} ${site.callee}${site.declaration ? ` → ${site.declaration.path}:${site.declaration.line}:${site.declaration.column}` : ''}${site.when ? ` when ${site.when} (pre-state)` : ''}${site.args !== undefined ? ` with args ${JSON.stringify(site.args)}` : ''}`}`);
+      if (!site) { lines.push(`  ${label}: absent (explicit)`); continue; }
+      const declaration = site.declaration ? ` → ${loc(site.declaration)}` : '';
+      const filter = site.when ? ` when ${site.when} (pre-state)` : site.args !== undefined ? ` with args ${JSON.stringify(site.args)}` : '';
+      lines.push(`  ${label}: ${loc(site, data.entrypoint)} ${site.callee}${declaration}${filter}${formatVia(site.via, data.entrypoint)}`);
     }
-    for (const site of data.hidden) lines.push(`  Hidden: ${site.path ?? data.entrypoint}:${site.line}:${site.column}`);
+    for (const site of data.hidden) lines.push(`  Hidden: ${loc(site, data.entrypoint)}${formatVia(site.via, data.entrypoint)}`);
     if (data.closure) lines.push(`  Search: ${data.closure.generated} generated, ${data.closure.distinct} distinct, ${data.closure.queued} queued`);
   }
   for (const entry of report.diagnostics) lines.push(`${entry.side?.toUpperCase() ?? 'Comparison'} ${entry.phase}: ${entry.message}`);
@@ -239,7 +257,7 @@ function terminal(report) {
     for (const { change, outcome, witness } of row.deltas) {
       lines.push(`${change} ${JSON.stringify(outcome)} (${witness.revision})`, `    init ${JSON.stringify(witness.initial)}`);
       for (const { state, site, label } of witness.steps) {
-        lines.push(`    ${label ?? 'hidden'} ${site.path}:${site.line}:${site.column} → ${JSON.stringify(state)}`);
+        lines.push(`    ${label ?? 'hidden'} ${loc(site)}${formatVia(site.via)} → ${JSON.stringify(state)}`);
       }
     }
   }

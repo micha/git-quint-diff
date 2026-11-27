@@ -630,6 +630,7 @@ class CliTest(FixtureCase):
         def side(stage, publish):
             return {"entrypoint": "tests/recorded_return_design.qnt", "module": "recorded_return_design",
                     "init": "init", "step": "step", "observe": "event.receipt", "hidden": [],
+                    "routing": ["recorded_return_design::workerStep", "recorded_return_design::sourceStep"],
                     "bindings": {label: {"callee": f"recorded_return_design::{callee}", "line": line, "column": 5}
                                  for label, callee, line in zip(labels, ("stage", "publish", "publish"),
                                                                (stage, publish, publish), strict=True)}}

@@ -1,0 +1,19 @@
+diff --git a/recorded_return_fixture.qnt b/recorded_return_fixture.qnt
+index 8913729..08eec33 100644
+--- a/recorded_return_fixture.qnt
++++ b/recorded_return_fixture.qnt
+@@ -60,6 +60,6 @@ module recorded_return_fixture {
+   action step = if (not(returning)) startReturn
+     else if (event != noEvent) clearEvent
+-    else sourceStep
++    else readyStep
+
+   action sourceStep =
+     any {
+@@ -73,4 +73,6 @@ module recorded_return_fixture {
+       nondet target = Set(absent, previousMain, competingMain).oneOf()
+       all { main' = target, returning' = returning, staged' = staged, receipt' = receipt, event' = event }
+     }
++
++  action readyStep = sourceStep
+ }

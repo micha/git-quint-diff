@@ -1,0 +1,15 @@
+diff --git a/recorded_return_fixture.qnt b/recorded_return_fixture.qnt
+index 5760ebf..762100a 100644
+--- a/recorded_return_fixture.qnt
++++ b/recorded_return_fixture.qnt
+@@ -60,6 +60,9 @@ module recorded_return_fixture {
+   action step = if (not(returning)) startReturn
+     else if (event != noEvent) clearEvent
+-    else any {
++    else sourceStep
++
++  action sourceStep =
++    any {
+       nondet root = Set(planned, alternate).oneOf()
+       stage(root),
+       nondet root = Set(planned, alternate).oneOf()

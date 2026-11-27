@@ -50,7 +50,30 @@ main still at `3`; factor `−2` retains both paths. These checks support this
 finite fixture and these histories, not the original DML model or its
 implementation.
 
-Run both checks in the development shell:
+## Routed derivative
+
+A second disposable repository uses the same model and review histories,
+but takes the ready branch through a named action. OLD applies
+[`route-scheduler.diff`](route-scheduler.diff) to the base fixture. NEW
+applies the factor check and [`add-ready-router.diff`](add-ready-router.diff).
+Handoff and report clearing stay in `step`; it calls `sourceStep` in OLD
+and `readyStep → sourceStep` in NEW. The routed copies are separate committed
+snapshots, not rewrites applied by the reviewer.
+
+| Side | Commit | Model blob | Explicit `routing` |
+| --- | --- | --- | --- |
+| OLD | `2e2a3ec087c0cf05e8d29129a1330909778e7223` | `762100a594848f945368fb3503e8e1815c8b9085` | `recorded_return_fixture::sourceStep` |
+| NEW | `125ee395267dd1c618aeb27487d9a98831de1026` | `08eec339a37d48f63a75248eb7b9e855cc8d019a` | `recorded_return_fixture::readyStep`, `recorded_return_fixture::sourceStep` |
+
+The predicted outcome sets and witness lengths are unchanged. The oracle
+compiles the original `step`, checks every reachable tracked state's
+outgoing states after removing its tag, and independently checks labels and
+ordered routing hops in witnesses. Discovery supplies copyable selectors with
+`via` positions. Omitting `readyStep` or `sourceStep` from the authorization
+needed on NEW leaves the unlisted action opaque; using OLD's single-hop
+selector path on NEW fails binding rather than reporting an empty outcome.
+
+Run the direct and routed checks in the development shell:
 
 ```sh
 nix develop --command python3 -B -m unittest discover -s release-tests -p test_dml.py -v

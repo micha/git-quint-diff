@@ -2,7 +2,7 @@
 
 Review what two commits **add or remove from a Quint model's behavior**, not just what changed in the source. Git selects the model snapshots; the review selects the original scheduler calls, public histories, and observation. The CLI compares the **sets** of reachable outcomes and supplies a replayable witness for each addition or removal. It uses neither LLMs nor random simulation.
 
-**Status:** Pre-release. The source-bound runtime supports imported, nested schedulers and labels selected by pre-state predicates or exact call arguments, including local choices. It has been checked on the [upstream Quint consensus pair](docs/first-release-acceptance.md#2-imported-consensus-scheduler) and a [finite DML-derived fixture](docs/first-release-acceptance.md#3-dml-derived-argument-selection-and-historical-parser-failure). The pure-adapter prototype and seven design experiments are archived at `prototype-handoff` (`064f97d`).
+**Status:** Pre-release. The source-bound runtime supports imported schedulers, explicitly named routing actions, and labels selected by pre-state predicates or exact call arguments, including local choices. It has been checked on the [upstream Quint consensus pair](docs/first-release-acceptance.md#2-imported-consensus-scheduler) and a [finite DML-derived fixture](docs/first-release-acceptance.md#3-dml-derived-argument-selection-and-historical-parser-failure). The pure-adapter prototype and seven design experiments are archived at `prototype-handoff` (`064f97d`).
 
 ## Try it
 
