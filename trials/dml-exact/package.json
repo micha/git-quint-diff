@@ -1,0 +1,7 @@
+{
+  "name": "git-quint-diff-dml-exact-trial",
+  "private": true,
+  "dependencies": {
+    "@informalsystems/quint": "0.34.0"
+  }
+}
